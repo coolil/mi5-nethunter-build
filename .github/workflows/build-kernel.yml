@@ -38,34 +38,43 @@ jobs:
         
         make gemini_defconfig CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-
         
-        # Suntikkan fitur NetHunter
+        # Mengubah strategi konfigurasi menjadi Modul (=m) untuk mencegah konflik kompilasi di inti kernel
         echo "CONFIG_WIRELESS=y" >> .config
-        echo "CONFIG_CFG80211=y" >> .config
+        echo "CONFIG_CFG80211=m" >> .config
         echo "CONFIG_NL80211_TESTMODE=y" >> .config
         echo "CONFIG_CFG80211_WEXT=y" >> .config
-        echo "CONFIG_MAC80211=y" >> .config
+        echo "CONFIG_MAC80211=m" >> .config
         echo "CONFIG_WLAN_VENDOR_REALTEK=y" >> .config
-        echo "CONFIG_RTL8188EU=y" >> .config
-        echo "CONFIG_RTLWIFI=y" >> .config
+        echo "CONFIG_RTL8188EU=m" >> .config
+        echo "CONFIG_RTLWIFI=m" >> .config
         echo "CONFIG_USB_GADGET=y" >> .config
-        echo "CONFIG_USB_G_HID=y" >> .config
-        echo "CONFIG_USB_F_HID=y" >> .config
-        echo "CONFIG_TUN=y" >> .config
+        echo "CONFIG_USB_G_HID=m" >> .config
+        echo "CONFIG_USB_F_HID=m" >> .config
+        echo "CONFIG_TUN=m" >> .config
         
         make olddefconfig CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-
 
-    - name: Compile Kernel
+    - name: Compile Kernel & Modules
       run: |
         cd kernel-source
         export ARCH=arm64
         export SUBARCH=arm64
         export PATH=$GITHUB_WORKSPACE/toolchains/clang/bin:$GITHUB_WORKSPACE/toolchains/gcc64/bin:$GITHUB_WORKSPACE/toolchains/gcc32/bin:$PATH
         
-        # KCFLAGS="-w" digunakan untuk menyembunyikan warning keras dari Clang yang bisa memicu 'Error 2'
+        # Kompilasi utama kernel
         make -j$(nproc) CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- KCFLAGS="-w"
+        
+        # Kompilasi berkas modul (.ko) yang kita butuhkan
+        make -j$(nproc) modules CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- KCFLAGS="-w"
+        
+        # Wadahi modul-modul hasil compile ke satu tempat khusus
+        mkdir -p ../modules_out
+        find . -name "*.ko" -exec cp {} ../modules_out/ \;
 
-    - name: Upload Kernel Image Artifact
+    - name: Upload Kernel and Modules Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: Mi5-NetHunter-Kernel-Image
-        path: kernel-source/arch/arm64/boot/Image.gz-dtb
+        name: Mi5-NetHunter-Kernel-Package
+        path: |
+          kernel-source/arch/arm64/boot/Image.gz-dtb
+          modules_out/
