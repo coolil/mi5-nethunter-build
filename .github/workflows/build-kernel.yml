@@ -18,9 +18,8 @@ jobs:
 
     - name: Clone Kernel Source
       run: |
-        # Mengunduh source kernel NetHunter Mi 5 Anda
-        git clone https://github.com/kim798/android_kernel_xiaomi_msm8996.git -b lineage-17.1 kernel-source
-        # Catatan: Silakan ganti URL di atas jika Anda memiliki link git source kernel Mi 5 yang berbeda.
+        # Mengunduh langsung source kernel dari repositori Anda
+        git clone https://github.com/coolil/mi5-nethunter.git -b master kernel-source
 
     - name: Configure Kernel with NetHunter Features
       run: |
