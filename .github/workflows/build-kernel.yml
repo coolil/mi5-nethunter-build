@@ -18,8 +18,8 @@ jobs:
 
     - name: Clone Kernel Source
       run: |
-        # Mengunduh langsung source kernel dari repositori Anda
-        git clone https://github.com/coolil/mi5-nethunter.git -b master kernel-source
+        # Mengunduh source kernel Gemini Pixel Experience Android 12 (Kernel 4.4)
+        git clone --depth=1 https://github.com/B--B/Gemini-B--B-Kernel.git -b twelve-4.4-inline kernel-source
 
     - name: Configure Kernel with NetHunter Features
       run: |
