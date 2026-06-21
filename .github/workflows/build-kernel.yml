@@ -63,6 +63,3 @@ jobs:
       with:
         name: Mi5-NetHunter-Kernel-Image
         path: kernel-source/arch/arm64/boot/Image.gz-dtb
-      with:
-        name: Mi5-NetHunter-Kernel-Image
-        path: kernel-source/arch/arm64/boot/Image.gz-dtb
