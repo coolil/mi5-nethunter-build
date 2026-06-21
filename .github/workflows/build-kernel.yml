@@ -1,0 +1,66 @@
+name: Build Mi 5 NetHunter Kernel
+
+on:
+  workflow_dispatch: # Memungkinkan Anda memicu tombol "Run workflow" secara manual
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Install Dependencies & Toolchains
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev bc ccache kmod crossbuild-essential-arm64 crossbuild-essential-armel git
+
+    - name: Clone Kernel Source
+      run: |
+        # Mengunduh source kernel NetHunter Mi 5 Anda
+        git clone https://github.com/kim798/android_kernel_xiaomi_msm8996.git -b lineage-17.1 kernel-source
+        # Catatan: Silakan ganti URL di atas jika Anda memiliki link git source kernel Mi 5 yang berbeda.
+
+    - name: Configure Kernel with NetHunter Features
+      run: |
+        cd kernel-source
+        export ARCH=arm64
+        export SUBARCH=arm64
+        export CROSS_COMPILE=aarch64-linux-gnu-
+        export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+        
+        # Ambil defconfig dasar
+        make gemini_defconfig
+        
+        # Suntikkan fitur NetHunter & TP-Link v3 langsung via terminal
+        echo "CONFIG_WIRELESS=y" >> .config
+        echo "CONFIG_CFG80211=y" >> .config
+        echo "CONFIG_NL80211_TESTMODE=y" >> .config
+        echo "CONFIG_CFG80211_WEXT=y" >> .config
+        echo "CONFIG_MAC80211=y" >> .config
+        echo "CONFIG_WLAN_VENDOR_REALTEK=y" >> .config
+        echo "CONFIG_RTL8188EU=y" >> .config
+        echo "CONFIG_RTLWIFI=y" >> .config
+        echo "CONFIG_USB_GADGET=y" >> .config
+        echo "CONFIG_USB_G_HID=y" >> .config
+        echo "CONFIG_USB_F_HID=y" >> .config
+        echo "CONFIG_TUN=y" >> .config
+        
+        # Rapikan config
+        make olddefconfig
+
+    - name: Compile Kernel
+      run: |
+        cd kernel-source
+        export ARCH=arm64
+        export SUBARCH=arm64
+        export CROSS_COMPILE=aarch64-linux-gnu-
+        export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+        make -j$(nproc)
+
+    - name: Upload Kernel Image Artifact
+      uses: actions/artifacts@v4
+      with:
+        name: Mi5-NetHunter-Kernel-Image
+        path: kernel-source/arch/arm64/boot/Image.gz-dtb
