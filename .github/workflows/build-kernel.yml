@@ -20,11 +20,8 @@ jobs:
       run: |
         mkdir -p toolchains
         cd toolchains
-        # Download Clang dari AOSP resmi (menggunakan versi stabil r383902)
         wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/android-11.0.0_r47/clang-r383902.tar.gz
         mkdir -p clang && tar -xf clang-r383902.tar.gz -C clang
-        
-        # Download GCC 64-bit dan 32-bit untuk kompatibilitas penyusunan objek
         git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git -b lineage-17.1 gcc64
         git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git -b lineage-17.1 gcc32
 
@@ -35,16 +32,13 @@ jobs:
     - name: Configure Kernel with NetHunter Features
       run: |
         cd kernel-source
-        
-        # Daftarkan variabel lingkungan compiler AOSP
         export ARCH=arm64
         export SUBARCH=arm64
         export PATH=$GITHUB_WORKSPACE/toolchains/clang/bin:$GITHUB_WORKSPACE/toolchains/gcc64/bin:$GITHUB_WORKSPACE/toolchains/gcc32/bin:$PATH
         
-        # Ambil defconfig dasar
         make gemini_defconfig CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-
         
-        # Suntikkan fitur NetHunter & TP-Link v3
+        # Suntikkan fitur NetHunter
         echo "CONFIG_WIRELESS=y" >> .config
         echo "CONFIG_CFG80211=y" >> .config
         echo "CONFIG_NL80211_TESTMODE=y" >> .config
@@ -58,7 +52,6 @@ jobs:
         echo "CONFIG_USB_F_HID=y" >> .config
         echo "CONFIG_TUN=y" >> .config
         
-        # Rapikan config
         make olddefconfig CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-
 
     - name: Compile Kernel
@@ -68,8 +61,8 @@ jobs:
         export SUBARCH=arm64
         export PATH=$GITHUB_WORKSPACE/toolchains/clang/bin:$GITHUB_WORKSPACE/toolchains/gcc64/bin:$GITHUB_WORKSPACE/toolchains/gcc32/bin:$PATH
         
-        # Mulai kompilasi menggunakan parameter penuh Clang AOSP
-        make -j$(nproc) CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-
+        # KCFLAGS="-w" digunakan untuk menyembunyikan warning keras dari Clang yang bisa memicu 'Error 2'
+        make -j$(nproc) CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- KCFLAGS="-w"
 
     - name: Upload Kernel Image Artifact
       uses: actions/upload-artifact@v4
