@@ -51,16 +51,12 @@ jobs:
 
     - name: Compile Kernel
       run: |
-        # Membuka seluruh jalur folder internal (GPU, Sound, Kamera, Sensor, dan Misc) agar GCC modern tidak tersesat
-        export KCFLAGS="-I${PWD}/drivers/gpu/msm \
-                        -I${PWD}/sound/soc/msm \
-                        -I${PWD}/drivers/misc \
-                        -I${PWD}/drivers/media/platform/msm/camera_v2 \
-                        -I${PWD}/drivers/media/platform/msm/camera_v2/common \
-                        -I${PWD}/drivers/media/platform/msm/camera_v2/isp \
-                        -I${PWD}/drivers/media/platform/msm/camera_v2/sensor \
-                        -I${PWD}/drivers/media/platform/msm/camera_v2/sensor/io"
-                        
+        # JALUR SAPU JAGAT V2: Mencari seluruh sub-folder sensitif secara otomatis (termasuk nfc)
+        EXTRA_PATHS=$(find drivers/gpu/msm sound/soc/msm drivers/media/platform/msm drivers/net drivers/misc drivers/nfc -type d 2>/dev/null | sed "s/^/-I\${PWD}\//")
+        
+        # Ditambahkan "-I." di ujung agar makro trace (seperti rndis_ipa_trace.h) bisa dibaca secara lokal oleh GCC
+        export KCFLAGS="$EXTRA_PATHS -I."
+        
         make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="$KCFLAGS" -j$(nproc)
 
     - name: Upload Kernel Result
