@@ -1,80 +1,52 @@
 name: Build Mi 5 NetHunter Kernel
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: # Memungkinkan kamu menjalankan build secara manual klik tombol
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04 # Menggunakan Ubuntu 20.04 yang lebih stabil untuk kernel lama
 
     steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v4
+    - name: Checkout Kernel Source
+      uses: actions/checkout@v3
 
-    - name: Install Dependencies
+    - name: Install Dependencies & Toolchains
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev libelf-dev bc ccache kmod git wget coreutils
+        sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev bison flex libelf-dev
+        # Mengunduh GCC jadul (GCC 4.9 / 5) yang stabil untuk Kernel 4.4
+        sudo apt-get install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
 
-    - name: Download Google Clang & GCC Toolchains
+    - name: Configure & Inject NetHunter Features
       run: |
-        mkdir -p toolchains
-        cd toolchains
-        wget -q https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/android-11.0.0_r47/clang-r383902.tar.gz
-        mkdir -p clang && tar -xf clang-r383902.tar.gz -C clang
-        git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git -b lineage-17.1 gcc64
-        git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git -b lineage-17.1 gcc32
-
-    - name: Clone Kernel Source
-      run: |
-        git clone --depth=1 https://github.com/B--B/Gemini-B--B-Kernel.git -b twelve-4.4-inline kernel-source
-
-    - name: Configure Kernel with NetHunter Features
-      run: |
-        cd kernel-source
         export ARCH=arm64
-        export SUBARCH=arm64
-        export PATH=$GITHUB_WORKSPACE/toolchains/clang/bin:$GITHUB_WORKSPACE/toolchains/gcc64/bin:$GITHUB_WORKSPACE/toolchains/gcc32/bin:$PATH
+        # 1. Buat defconfig dasar Mi 5
+        make gemini_defconfig
         
-        make gemini_defconfig CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-
+        # 2. Suntik Fitur NetHunter (USB Gadget, HID, Wi-Fi Injection)
+        ./scripts/config --enable CONFIG_USB_GADGET
+        ./scripts/config --enable CONFIG_USB_CONFIGFS
+        ./scripts/config --enable CONFIG_USB_CONFIGFS_F_HID
+        ./scripts/config --enable CONFIG_PACKET
+        ./scripts/config --enable CONFIG_NETFILTER
+        ./scripts/config --enable CONFIG_NETFILTER_XT_TARGET_TTL
+        ./scripts/config --enable CONFIG_WIRELESS
+        ./scripts/config --enable CONFIG_CFG80211
+        ./scripts/config --enable CONFIG_MAC80211
+        ./scripts/config --enable CONFIG_MAC80211_LEDS
+        ./scripts/config --enable CONFIG_WLAN
         
-        # Mengubah strategi konfigurasi menjadi Modul (=m) untuk mencegah konflik kompilasi di inti kernel
-        echo "CONFIG_WIRELESS=y" >> .config
-        echo "CONFIG_CFG80211=m" >> .config
-        echo "CONFIG_NL80211_TESTMODE=y" >> .config
-        echo "CONFIG_CFG80211_WEXT=y" >> .config
-        echo "CONFIG_MAC80211=m" >> .config
-        echo "CONFIG_WLAN_VENDOR_REALTEK=y" >> .config
-        echo "CONFIG_RTL8188EU=m" >> .config
-        echo "CONFIG_RTLWIFI=m" >> .config
-        echo "CONFIG_USB_GADGET=y" >> .config
-        echo "CONFIG_USB_G_HID=m" >> .config
-        echo "CONFIG_USB_F_HID=m" >> .config
-        echo "CONFIG_TUN=m" >> .config
-        
-        make olddefconfig CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-
+        # 3. Sinkronisasi konfigurasi
+        make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- olddefconfig
 
-    - name: Compile Kernel & Modules
+    - name: Compile Kernel
       run: |
-        cd kernel-source
         export ARCH=arm64
-        export SUBARCH=arm64
-        export PATH=$GITHUB_WORKSPACE/toolchains/clang/bin:$GITHUB_WORKSPACE/toolchains/gcc64/bin:$GITHUB_WORKSPACE/toolchains/gcc32/bin:$PATH
-        
-        # Kompilasi utama kernel
-        make -j$(nproc) CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- KCFLAGS="-w"
-        
-        # Kompilasi berkas modul (.ko) yang kita butuhkan
-        make -j$(nproc) modules CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- KCFLAGS="-w"
-        
-        # Wadahi modul-modul hasil compile ke satu tempat khusus
-        mkdir -p ../modules_out
-        find . -name "*.ko" -exec cp {} ../modules_out/ \;
+        make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- -j$(nproc)
 
-    - name: Upload Kernel and Modules Artifact
-      uses: actions/upload-artifact@v4
+    - name: Upload Kernel Result
+      uses: actions/upload-artifact@v3
       with:
-        name: Mi5-NetHunter-Kernel-Package
-        path: |
-          kernel-source/arch/arm64/boot/Image.gz-dtb
-          modules_out/
+        name: NetHunter-Kernel-Mi5
+        path: arch/arm64/boot/Image.gz-dtb # Jalur file kernel yang sudah jadi
