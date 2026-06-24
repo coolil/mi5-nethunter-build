@@ -1,27 +1,30 @@
 name: Build Mi 5 NetHunter Kernel
 
 on:
-  workflow_dispatch: # Memungkinkan kamu menjalankan build secara manual klik tombol
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-20.04 # Menggunakan Ubuntu 20.04 yang lebih stabil untuk kernel lama
+    runs-on: ubuntu-20.04
+    env:
+      ARCH: arm64
+      SUBARCH: arm64
 
     steps:
-    - name: Checkout Kernel Source
-      uses: actions/checkout@v3
+    - name: Clone Kernel Source
+      run: |
+        # Mengunduh langsung source kernel Mi 5 khusus Android 12 (branch twelve-4.4-inline)
+        git clone --depth=1 -b twelve-4.4-inline https://github.com/B--B/Gemini-B--B-Kernel.git .
 
     - name: Install Dependencies & Toolchains
       run: |
         sudo apt-get update
         sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev bison flex libelf-dev
-        # Mengunduh GCC jadul (GCC 4.9 / 5) yang stabil untuk Kernel 4.4
         sudo apt-get install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
 
     - name: Configure & Inject NetHunter Features
       run: |
-        export ARCH=arm64
-        # 1. Buat defconfig dasar Mi 5
+        # 1. Bersihkan sisa environment dan muat defconfig bawaan Mi 5 (gemini)
         make gemini_defconfig
         
         # 2. Suntik Fitur NetHunter (USB Gadget, HID, Wi-Fi Injection)
@@ -37,16 +40,15 @@ jobs:
         ./scripts/config --enable CONFIG_MAC80211_LEDS
         ./scripts/config --enable CONFIG_WLAN
         
-        # 3. Sinkronisasi konfigurasi
+        # 3. Sinkronisasi konfigurasi agar fitur nethunter terkunci di .config
         make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- olddefconfig
 
     - name: Compile Kernel
       run: |
-        export ARCH=arm64
         make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- -j$(nproc)
 
     - name: Upload Kernel Result
       uses: actions/upload-artifact@v3
       with:
         name: NetHunter-Kernel-Mi5
-        path: arch/arm64/boot/Image.gz-dtb # Jalur file kernel yang sudah jadi
+        path: arch/arm64/boot/Image.gz-dtb
