@@ -51,10 +51,19 @@ jobs:
 
     - name: Compile Kernel
       run: |
-        # Disatukan dalam satu baris lurus agar tidak memicu eror syntax unterminated string di GitHub
-        EXTRA_PATHS=$(find drivers/gpu/msm sound/soc/msm drivers/media/platform/msm drivers/net drivers/misc drivers/nfc -type d 2>/dev/null | sed "s/^/-I\${PWD}\//")
-        export KCFLAGS="$EXTRA_PATHS -I."
-        
+        # Memetakan jalur include path secara manual dan rapi tanpa perintah 'find' agar terhindar dari error syntax shell
+        export KCFLAGS="-I$GITHUB_WORKSPACE/drivers/gpu/msm \
+                        -I$GITHUB_WORKSPACE/sound/soc/msm \
+                        -I$GITHUB_WORKSPACE/drivers/misc \
+                        -I$GITHUB_WORKSPACE/drivers/nfc \
+                        -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2 \
+                        -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/common \
+                        -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/isp \
+                        -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/sensor \
+                        -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/sensor/io \
+                        -I$GITHUB_WORKSPACE/drivers/net/ethernet/msm \
+                        -I."
+                        
         make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="$KCFLAGS" -j$(nproc)
 
     - name: Upload Kernel Result
