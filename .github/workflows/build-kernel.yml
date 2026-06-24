@@ -48,7 +48,7 @@ jobs:
         make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- -j$(nproc)
 
     - name: Upload Kernel Result
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: NetHunter-Kernel-Mi5
         path: arch/arm64/boot/Image.gz-dtb
