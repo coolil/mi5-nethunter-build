@@ -51,8 +51,16 @@ jobs:
 
     - name: Compile Kernel
       run: |
-        # Menambahkan jalur folder internal (msm gpu, sound, msm camera common, dan msm camera isp) ke KCFLAGS
-        export KCFLAGS="-I${PWD}/drivers/gpu/msm -I${PWD}/sound/soc/msm -I${PWD}/drivers/media/platform/msm/camera_v2 -I${PWD}/drivers/media/platform/msm/camera_v2/common -I${PWD}/drivers/media/platform/msm/camera_v2/isp"
+        # Membuka seluruh jalur folder internal (GPU, Sound, Kamera, Sensor, dan Misc) agar GCC modern tidak tersesat
+        export KCFLAGS="-I${PWD}/drivers/gpu/msm \
+                        -I${PWD}/sound/soc/msm \
+                        -I${PWD}/drivers/misc \
+                        -I${PWD}/drivers/media/platform/msm/camera_v2 \
+                        -I${PWD}/drivers/media/platform/msm/camera_v2/common \
+                        -I${PWD}/drivers/media/platform/msm/camera_v2/isp \
+                        -I${PWD}/drivers/media/platform/msm/camera_v2/sensor \
+                        -I${PWD}/drivers/media/platform/msm/camera_v2/sensor/io"
+                        
         make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="$KCFLAGS" -j$(nproc)
 
     - name: Upload Kernel Result
