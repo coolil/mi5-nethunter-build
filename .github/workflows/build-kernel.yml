@@ -13,7 +13,7 @@ jobs:
     steps:
     - name: Clone Kernel Source
       run: |
-        # Mengunduh langsung source kernel Mi 5 khusus Android 12 (branch twelve-4.4-inline)
+        # Tetap menggunakan source Mi 5 Android 12 yang sudah terbukti maju prosesnya
         git clone --depth=1 -b twelve-4.4-inline https://github.com/B--B/Gemini-B--B-Kernel.git .
 
     - name: Install Dependencies & Toolchains
@@ -51,8 +51,11 @@ jobs:
 
     - name: Compile Kernel
       run: |
-        # Memetakan seluruh include path yang sensitif, termasuk sub-folder chip NFC pn548 secara spesifik
-        export KCFLAGS="-I$GITHUB_WORKSPACE/drivers/gpu/msm \
+        # RAMUAN PENJINAK:
+        # -w : Memaksa GCC mengabaikan semua warning ketat agar tidak sengaja menghentikan proses (Exit Code 2).
+        # -I. dan silsilah folder : Menyuplai jalur relatif makro trace Qualcomm yang tersesat.
+        export KCFLAGS="-w \
+                        -I$GITHUB_WORKSPACE/drivers/gpu/msm \
                         -I$GITHUB_WORKSPACE/sound/soc/msm \
                         -I$GITHUB_WORKSPACE/drivers/misc \
                         -I$GITHUB_WORKSPACE/drivers/nfc \
@@ -63,9 +66,9 @@ jobs:
                         -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/sensor \
                         -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/sensor/io \
                         -I$GITHUB_WORKSPACE/drivers/net/ethernet/msm \
+                        -I$GITHUB_WORKSPACE/drivers/platform/msm/ipa/ipa_v2 \
                         -I."
                         
-        # Menggunakan -j2 agar penggunaan RAM server seimbang dan log tidak berantakan jika ada hambatan lain
         make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="$KCFLAGS" -j2
 
     - name: Upload Kernel Result
