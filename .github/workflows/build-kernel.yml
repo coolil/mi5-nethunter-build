@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:    runs-on: ubuntu-latest
-    
+  build:
+    runs-on: ubuntu-latest
     env:
       ARCH: arm64
       SUBARCH: arm64
