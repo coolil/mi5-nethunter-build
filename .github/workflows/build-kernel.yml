@@ -51,8 +51,8 @@ jobs:
 
     - name: Compile Kernel
       run: |
-        # Menambahkan jalur folder internal ke KCFLAGS agar GCC modern tidak buta arah mencari file header msm
-        export KCFLAGS="-I${PWD}/drivers/gpu/msm -I${PWD}/sound/soc/msm"
+        # Menambahkan jalur folder internal (msm gpu, sound, dan msm camera) ke KCFLAGS agar GCC modern tidak buta arah
+        export KCFLAGS="-I${PWD}/drivers/gpu/msm -I${PWD}/sound/soc/msm -I${PWD}/drivers/media/platform/msm/camera_v2 -I${PWD}/drivers/media/platform/msm/camera_v2/common"
         make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="$KCFLAGS" -j$(nproc)
 
     - name: Upload Kernel Result
