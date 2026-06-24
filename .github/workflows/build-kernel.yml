@@ -43,8 +43,8 @@ jobs:
         ./scripts/config --enable CONFIG_MAC80211_LEDS
         ./scripts/config --enable CONFIG_WLAN
         
-        # 4. FIX ERROR MAC80211: Ubah variabel yang tidak dikenali sistem ke penamaan yang benar
-        sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' net/mac80211/tx.c
+        # 4. FIX ERROR MAC80211: Memperbaiki mlme.c dan tx.c sekaligus berdasarkan cek grep lokal
+        sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' net/mac80211/*.c
         
         # 5. Sinkronisasi konfigurasi agar semua fitur terkunci di file .config
         make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- olddefconfig
