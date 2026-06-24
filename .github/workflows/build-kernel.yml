@@ -67,6 +67,7 @@ jobs:
                         -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/sensor/io \
                         -I$GITHUB_WORKSPACE/drivers/net/ethernet/msm \
                         -I$GITHUB_WORKSPACE/drivers/platform/msm/ipa/ipa_v2 \
+                        -I$GITHUB_WORKSPACE/drivers/soc/qcom \
                         -I."
                         
         make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="$KCFLAGS" -j2
