@@ -51,11 +51,12 @@ jobs:
 
     - name: Compile Kernel
       run: |
-        # Memetakan jalur include path secara manual dan rapi tanpa perintah 'find' agar terhindar dari error syntax shell
+        # Memetakan seluruh include path yang sensitif, termasuk sub-folder chip NFC pn548 secara spesifik
         export KCFLAGS="-I$GITHUB_WORKSPACE/drivers/gpu/msm \
                         -I$GITHUB_WORKSPACE/sound/soc/msm \
                         -I$GITHUB_WORKSPACE/drivers/misc \
                         -I$GITHUB_WORKSPACE/drivers/nfc \
+                        -I$GITHUB_WORKSPACE/drivers/nfc/pn548 \
                         -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2 \
                         -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/common \
                         -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/isp \
@@ -64,7 +65,8 @@ jobs:
                         -I$GITHUB_WORKSPACE/drivers/net/ethernet/msm \
                         -I."
                         
-        make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="$KCFLAGS" -j$(nproc)
+        # Menggunakan -j2 agar penggunaan RAM server seimbang dan log tidak berantakan jika ada hambatan lain
+        make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="$KCFLAGS" -j2
 
     - name: Upload Kernel Result
       uses: actions/upload-artifact@v4
