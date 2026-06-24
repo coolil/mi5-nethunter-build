@@ -24,10 +24,13 @@ jobs:
 
     - name: Configure & Inject NetHunter Features
       run: |
-        # 1. Bersihkan sisa environment dan muat defconfig bawaan Mi 5 (gemini)
-        make gemini_defconfig
+        # 1. Muat defconfig bawaan Mi 5 (gemini)
+        make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- gemini_defconfig
         
-        # 2. Suntik Fitur NetHunter (USB Gadget, HID, Wi-Fi Injection)
+        # 2. Matikan LTO Clang agar tidak eror saat di-compile dengan GCC bawaan GitHub
+        ./scripts/config --disable CONFIG_LTO_CLANG
+        
+        # 3. Suntik Fitur NetHunter (USB Gadget, HID, Wi-Fi Injection)
         ./scripts/config --enable CONFIG_USB_GADGET
         ./scripts/config --enable CONFIG_USB_CONFIGFS
         ./scripts/config --enable CONFIG_USB_CONFIGFS_F_HID
@@ -40,7 +43,7 @@ jobs:
         ./scripts/config --enable CONFIG_MAC80211_LEDS
         ./scripts/config --enable CONFIG_WLAN
         
-        # 3. Sinkronisasi konfigurasi agar fitur nethunter terkunci di .config
+        # 4. Sinkronisasi konfigurasi agar semua fitur terkunci di file .config
         make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- olddefconfig
 
     - name: Compile Kernel
