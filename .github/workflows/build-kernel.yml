@@ -1,4 +1,4 @@
-name: Build Mi 5 NetHunter Kernel Super - Tahap 7
+name: Build Mi 5 NetHunter Kernel Super - Tahap 8
 
 on:
   workflow_dispatch:
@@ -61,6 +61,10 @@ jobs:
         # Fix Error MAC80211
         sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' net/mac80211/*.c
         
+        # [BARU] Fix Error pita frekuensi pada Driver RTL8188EUS agar cocok dengan Linux 4.4
+        sed -i 's/IEEE80211_BAND_2GHZ/NL80211_BAND_2GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.c
+        sed -i 's/IEEE80211_BAND_5GHZ/NL80211_BAND_5GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.c
+        
         # Fix Error KGSL GPU
         sed -i 's|#include <kgsl_device.h>|#include "kgsl_device.h"|g' drivers/gpu/msm/kgsl_events.c
         
@@ -75,7 +79,7 @@ jobs:
 
     - name: Compile Kernel (Strict Mode)
       run: |
-        # [BARU] Menambahkan folder drivers/net/ethernet/msm ke pendeteksian kompiler untuk meloloskan rndis_ipa_trace.h
+        # Menambahkan seluruh folder include yang sudah kita bedah bersama
         export KCFLAGS="-I$GITHUB_WORKSPACE/drivers/gpu/msm \
                         -I$GITHUB_WORKSPACE/drivers/soc/qcom \
                         -I$GITHUB_WORKSPACE/sound/soc/msm \
