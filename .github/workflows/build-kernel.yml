@@ -1,4 +1,4 @@
-name: Build Mi 5 NetHunter Kernel Super - Tahap 1
+name: Build Mi 5 NetHunter Kernel Super - Tahap 2
 
 on:
   workflow_dispatch:
@@ -57,14 +57,24 @@ jobs:
         ./scripts/config --set-val CONFIG_RT2800USB y
         ./scripts/config --set-val CONFIG_PRIMA_WLAN_MONITOR y
         
-        # 6. Sinkronisasi konfigurasi secara ketat
+        # 6. PERBAIKAN KODE (FIX ERROR)
+        # Fix Error MAC80211
+        sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' net/mac80211/*.c
+        
+        # Fix Error KGSL GPU (Mengubah <kgsl_device.h> menjadi "kgsl_device.h")
+        sed -i 's|#include <kgsl_device.h>|#include "kgsl_device.h"|g' drivers/gpu/msm/kgsl_events.c
+        
+        # 7. Sinkronisasi konfigurasi secara ketat
         make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- oldconfig < /dev/null
 
     - name: Compile Kernel (Strict Mode)
       run: |
-        # Di sini kita TIDAK menggunakan -w dan tidak menyembunyikan folder include.
-        # Kita biarkan kompiler berjalan murni agar tahu eror aslinya ada di baris mana.
-        make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- -j2
+        # Menambahkan jalur folder include internal agar membantu mencarikan file header Qualcomm yang tersesat
+        export KCFLAGS="-I$GITHUB_WORKSPACE/drivers/gpu/msm \
+                        -I$GITHUB_WORKSPACE/drivers/soc/qcom \
+                        -I."
+                        
+        make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="$KCFLAGS" -j2
 
     - name: Upload Kernel Result
       if: success()
