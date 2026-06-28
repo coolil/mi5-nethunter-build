@@ -1,4 +1,4 @@
-name: Build Mi 5 NetHunter Kernel Super - Tahap 8
+name: Build Mi 5 NetHunter Kernel Super - Tahap 9
 
 on:
   workflow_dispatch:
@@ -61,9 +61,12 @@ jobs:
         # Fix Error MAC80211
         sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' net/mac80211/*.c
         
-        # [BARU] Fix Error pita frekuensi pada Driver RTL8188EUS agar cocok dengan Linux 4.4
+        # Fix Error pita frekuensi pada Driver RTL8188EUS agar cocok dengan Linux 4.4
         sed -i 's/IEEE80211_BAND_2GHZ/NL80211_BAND_2GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.c
         sed -i 's/IEEE80211_BAND_5GHZ/NL80211_BAND_5GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.c
+        
+        # [BARU] Fix Error total band nethunter pada file header ioctl_cfg80211.h
+        sed -i 's/NUM_NL80211_BANDS/__NL80211_BAND_AFTER_LAST/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
         
         # Fix Error KGSL GPU
         sed -i 's|#include <kgsl_device.h>|#include "kgsl_device.h"|g' drivers/gpu/msm/kgsl_events.c
