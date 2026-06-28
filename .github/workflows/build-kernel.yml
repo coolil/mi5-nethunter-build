@@ -1,4 +1,4 @@
-name: Build Mi 5 NetHunter Kernel Super - Tahap 6
+name: Build Mi 5 NetHunter Kernel Super - Tahap 7
 
 on:
   workflow_dispatch:
@@ -67,7 +67,7 @@ jobs:
         # Fix Error Kamera Common
         sed -i 's|#include <msm_camera_tz_util.h>|#include "msm_camera_tz_util.h"|g' drivers/media/platform/msm/camera_v2/common/cam_smmu_api.c
         
-        # [BARU] Fix Error Haptic Driver drv2604
+        # Fix Error Haptic Driver drv2604
         sed -i 's|#include <drv2604.h>|#include "drv2604.h"|g' drivers/misc/drv2604.c
         
         # 7. Sinkronisasi konfigurasi secara ketat
@@ -75,7 +75,7 @@ jobs:
 
     - name: Compile Kernel (Strict Mode)
       run: |
-        # Menambahkan folder include drivers/misc ke pendeteksian kompiler
+        # [BARU] Menambahkan folder drivers/net/ethernet/msm ke pendeteksian kompiler untuk meloloskan rndis_ipa_trace.h
         export KCFLAGS="-I$GITHUB_WORKSPACE/drivers/gpu/msm \
                         -I$GITHUB_WORKSPACE/drivers/soc/qcom \
                         -I$GITHUB_WORKSPACE/sound/soc/msm \
@@ -84,6 +84,7 @@ jobs:
                         -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/sensor \
                         -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/sensor/io \
                         -I$GITHUB_WORKSPACE/drivers/misc \
+                        -I$GITHUB_WORKSPACE/drivers/net/ethernet/msm \
                         -I."
                         
         make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="$KCFLAGS" -j2
