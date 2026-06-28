@@ -1,4 +1,4 @@
-name: Build Mi 5 NetHunter Kernel
+name: Build Mi 5 NetHunter Kernel Super - Tahap 1
 
 on:
   workflow_dispatch:
@@ -13,7 +13,6 @@ jobs:
     steps:
     - name: Clone Kernel Source
       run: |
-        # Tetap menggunakan source Mi 5 Android 12 yang sudah terbukti maju prosesnya
         git clone --depth=1 -b twelve-4.4-inline https://github.com/B--B/Gemini-B--B-Kernel.git .
 
     - name: Install Dependencies & Toolchains
@@ -22,58 +21,54 @@ jobs:
         sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev bison flex libelf-dev
         sudo apt-get install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
 
+    - name: Clone External Driver RTL8188EUS (TP-Link v2/v3)
+      run: |
+        # Unduh source code asli driver Realtek v2/v3
+        git clone https://github.com/aircrack-ng/rtl8188eus.git drivers/net/wireless/rtl8188eus
+        echo "obj-\$(CONFIG_RTL8188EU) += rtl8188eus/" >> drivers/net/wireless/Makefile
+        echo 'source "drivers/net/wireless/rtl8188eus/Kconfig"' >> drivers/net/wireless/Kconfig
+
     - name: Configure & Inject NetHunter Features
       run: |
-        # 1. Muat defconfig bawaan Mi 5 (gemini)
+        # 1. Muat konfigurasi dasar HP
         make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- gemini_defconfig
         
-        # 2. Matikan LTO Clang agar tidak eror saat di-compile dengan GCC bawaan GitHub
+        # 2. Matikan LTO agar kompatibel dengan GCC bawaan GitHub
         ./scripts/config --disable CONFIG_LTO_CLANG
-        
-        # 3. Suntik Fitur NetHunter (USB Gadget, HID, Wi-Fi Injection)
+
+        # 3. Fitur Utama NetHunter & USB Gadget (HID / Mass Storage)
         ./scripts/config --enable CONFIG_USB_GADGET
         ./scripts/config --enable CONFIG_USB_CONFIGFS
         ./scripts/config --enable CONFIG_USB_CONFIGFS_F_HID
+        ./scripts/config --enable CONFIG_USB_CONFIGFS_F_MASS_STORAGE
         ./scripts/config --enable CONFIG_PACKET
         ./scripts/config --enable CONFIG_NETFILTER
-        ./scripts/config --enable CONFIG_NETFILTER_XT_TARGET_TTL
+        
+        # 4. Fondasi Wireless Mode Monitor & Injection
         ./scripts/config --enable CONFIG_WIRELESS
         ./scripts/config --enable CONFIG_CFG80211
         ./scripts/config --enable CONFIG_MAC80211
         ./scripts/config --enable CONFIG_MAC80211_LEDS
         ./scripts/config --enable CONFIG_WLAN
         
-        # 4. FIX ERROR MAC80211: Memperbaiki mlme.c dan tx.c sekaligus berdasarkan cek grep lokal
-        sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' net/mac80211/*.c
+        # 5. Aktifkan Semua Driver Target (Dibuat Built-in '=y')
+        ./scripts/config --set-val CONFIG_RTL8188EU y
+        ./scripts/config --set-val CONFIG_ATH9K_HTC y
+        ./scripts/config --set-val CONFIG_RT2800USB y
+        ./scripts/config --set-val CONFIG_PRIMA_WLAN_MONITOR y
         
-        # 5. Sinkronisasi konfigurasi agar semua fitur terkunci di file .config
-        make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- olddefconfig
+        # 6. Sinkronisasi konfigurasi secara ketat
+        make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- oldconfig < /dev/null
 
-    - name: Compile Kernel
+    - name: Compile Kernel (Strict Mode)
       run: |
-        # RAMUAN PENJINAK:
-        # -w : Memaksa GCC mengabaikan semua warning ketat agar tidak sengaja menghentikan proses (Exit Code 2).
-        # -I. dan silsilah folder : Menyuplai jalur relatif makro trace Qualcomm yang tersesat.
-        export KCFLAGS="-w \
-                        -I$GITHUB_WORKSPACE/drivers/gpu/msm \
-                        -I$GITHUB_WORKSPACE/sound/soc/msm \
-                        -I$GITHUB_WORKSPACE/drivers/misc \
-                        -I$GITHUB_WORKSPACE/drivers/nfc \
-                        -I$GITHUB_WORKSPACE/drivers/nfc/pn548 \
-                        -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2 \
-                        -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/common \
-                        -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/isp \
-                        -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/sensor \
-                        -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/sensor/io \
-                        -I$GITHUB_WORKSPACE/drivers/net/ethernet/msm \
-                        -I$GITHUB_WORKSPACE/drivers/platform/msm/ipa/ipa_v2 \
-                        -I$GITHUB_WORKSPACE/drivers/soc/qcom \
-                        -I."
-                        
-        make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="$KCFLAGS" -j2
+        # Di sini kita TIDAK menggunakan -w dan tidak menyembunyikan folder include.
+        # Kita biarkan kompiler berjalan murni agar tahu eror aslinya ada di baris mana.
+        make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- -j2
 
     - name: Upload Kernel Result
+      if: success()
       uses: actions/upload-artifact@v4
       with:
-        name: NetHunter-Kernel-Mi5
+        name: NetHunter-Kernel-Mi5-Super
         path: arch/arm64/boot/Image.gz-dtb
