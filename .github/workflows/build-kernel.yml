@@ -1,4 +1,4 @@
-name: Build Mi 5 NetHunter Kernel Super - Tahap 2
+name: Build Mi 5 NetHunter Kernel Super - Tahap 3
 
 on:
   workflow_dispatch:
@@ -64,14 +64,19 @@ jobs:
         # Fix Error KGSL GPU (Mengubah <kgsl_device.h> menjadi "kgsl_device.h")
         sed -i 's|#include <kgsl_device.h>|#include "kgsl_device.h"|g' drivers/gpu/msm/kgsl_events.c
         
+        # [BARU] Fix Error Kamera (Mengubah <msm_camera_tz_util.h> menjadi "msm_camera_tz_util.h")
+        sed -i 's|#include <msm_camera_tz_util.h>|#include "msm_camera_tz_util.h"|g' drivers/media/platform/msm/camera_v2/common/cam_smmu_api.c
+        
         # 7. Sinkronisasi konfigurasi secara ketat
         make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- oldconfig < /dev/null
 
     - name: Compile Kernel (Strict Mode)
       run: |
-        # Menambahkan jalur folder include internal agar membantu mencarikan file header Qualcomm yang tersesat
+        # Menambahkan folder include audio qdsp6v2 dan folder gpu/soc ke pendeteksian kompiler
         export KCFLAGS="-I$GITHUB_WORKSPACE/drivers/gpu/msm \
                         -I$GITHUB_WORKSPACE/drivers/soc/qcom \
+                        -I$GITHUB_WORKSPACE/sound/soc/msm \
+                        -I$GITHUB_WORKSPACE/sound/soc/msm/qdsp6v2 \
                         -I."
                         
         make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="$KCFLAGS" -j2
