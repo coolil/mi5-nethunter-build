@@ -1,4 +1,4 @@
-name: Build Mi 5 NetHunter Kernel Super - Tahap 4
+name: Build Mi 5 NetHunter Kernel Super - Tahap 5
 
 on:
   workflow_dispatch:
@@ -61,10 +61,10 @@ jobs:
         # Fix Error MAC80211
         sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' net/mac80211/*.c
         
-        # Fix Error KGSL GPU (Mengubah <kgsl_device.h> menjadi "kgsl_device.h")
+        # Fix Error KGSL GPU
         sed -i 's|#include <kgsl_device.h>|#include "kgsl_device.h"|g' drivers/gpu/msm/kgsl_events.c
         
-        # Fix Error Kamera (Mengubah <msm_camera_tz_util.h> menjadi "msm_camera_tz_util.h")
+        # Fix Error Kamera Common
         sed -i 's|#include <msm_camera_tz_util.h>|#include "msm_camera_tz_util.h"|g' drivers/media/platform/msm/camera_v2/common/cam_smmu_api.c
         
         # 7. Sinkronisasi konfigurasi secara ketat
@@ -72,12 +72,14 @@ jobs:
 
     - name: Compile Kernel (Strict Mode)
       run: |
-        # Menambahkan folder include camera_v2/isp agar mendeteksi file msm_isp.h yang tersesat
+        # Menambahkan folder include untuk melengkapi pemanggilan terpisah pada modul kamera Qualcomm
         export KCFLAGS="-I$GITHUB_WORKSPACE/drivers/gpu/msm \
                         -I$GITHUB_WORKSPACE/drivers/soc/qcom \
                         -I$GITHUB_WORKSPACE/sound/soc/msm \
                         -I$GITHUB_WORKSPACE/sound/soc/msm/qdsp6v2 \
                         -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/isp \
+                        -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/sensor \
+                        -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/sensor/io \
                         -I."
                         
         make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="$KCFLAGS" -j2
