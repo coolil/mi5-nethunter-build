@@ -1,4 +1,4 @@
-name: Build Mi 5 NetHunter Kernel Super - Tahap 17
+name: Build Mi 5 NetHunter Kernel Super - Tahap 18
 
 on:
   workflow_dispatch:
@@ -69,8 +69,10 @@ jobs:
         sed -i 's/NUM_NL80211_BANDS/NL80211_BAND_2GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/*.h
         echo '#define rtw_band_to_nl80211_band(band) (enum nl80211_band)(((band) == BAND_ON_5G) ? NL80211_BAND_5GHZ : NL80211_BAND_2GHZ)' >> drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
         
-        # [PENYEMPURNAAN VENDOR REALTEK] Suntik kedua variabel subcmd Android modern yang hilang sekaligus ke baris paling atas
-        sed -i '1s/^/#define ANDROID_NL80211_SUBCMD_PKT_FILTER_RANGE_START 0\n#define ANDROID_NL80211_SUBCMD_RTT_RANGE_START 0\n/' drivers/net/wireless/rtl8188eus/include/../os_dep/linux/rtw_cfgvendor.h
+        # [BOM WINS!] Suntik seluruh daftar range start subcmd Android sekaligus ke baris paling atas rtw_cfgvendor.h
+        printf '#define ANDROID_NL80211_SUBCMD_GSCAN_RANGE_START 0\n#define ANDROID_NL80211_SUBCMD_RTT_RANGE_START 0\n#define ANDROID_NL80211_SUBCMD_PKT_FILTER_RANGE_START 0\n#define ANDROID_NL80211_SUBCMD_PASSPOINT_RANGE_START 0\n#define ANDROID_NL80211_SUBCMD_WIFI_LOGGER_RANGE_START 0\n' > drivers/net/wireless/rtl8188eus/os_dep/linux/rtw_cfgvendor.h.tmp
+        cat drivers/net/wireless/rtl8188eus/include/../os_dep/linux/rtw_cfgvendor.h >> drivers/net/wireless/rtl8188eus/os_dep/linux/rtw_cfgvendor.h.tmp
+        mv drivers/net/wireless/rtl8188eus/os_dep/linux/rtw_cfgvendor.h.tmp drivers/net/wireless/rtl8188eus/include/../os_dep/linux/rtw_cfgvendor.h
         
         # Fix Error KGSL GPU
         sed -i 's|#include <kgsl_device.h>|#include "kgsl_device.h"|g' drivers/gpu/msm/kgsl_events.c
