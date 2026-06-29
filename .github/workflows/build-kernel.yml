@@ -1,4 +1,4 @@
-name: Build Mi 5 NetHunter Kernel Super - Tahap 15
+name: Build Mi 5 NetHunter Kernel Super - Tahap 16
 
 on:
   workflow_dispatch:
@@ -35,7 +35,7 @@ jobs:
         # 2. Matikan LTO agar kompatibel dengan GCC bawaan GitHub
         ./scripts/config --disable CONFIG_LTO_CLANG
 
-        # [STRATEGI BARU] Matikan driver haptic drv2604 yang hobi merusak kompilasi
+        # Matikan driver haptic drv2604 yang hobi merusak kompilasi
         ./scripts/config --disable CONFIG_INPUT_DRV2604
 
         # 3. Fitur Utama NetHunter & USB Gadget (HID / Mass Storage)
@@ -63,11 +63,14 @@ jobs:
         # Fix Error MAC80211
         sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' net/mac80211/*.c
         
-        # Penjinak Driver Realtek RTL8188EUS
+        # Penjinak Driver Realtek RTL8188EUS (Pita Frekuensi & Enum)
         sed -i '/#define rtw_band_to_nl80211_band/d' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
         sed -i 's/NUM_NL80211_BANDS/NL80211_BAND_2GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/*.c
         sed -i 's/NUM_NL80211_BANDS/NL80211_BAND_2GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/*.h
         echo '#define rtw_band_to_nl80211_band(band) (enum nl80211_band)(((band) == BAND_ON_5G) ? NL80211_BAND_5GHZ : NL80211_BAND_2GHZ)' >> drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
+        
+        # [BARU] Suntik definisi ANDROID_NL80211_SUBCMD_PKT_FILTER_RANGE_START yang hilang pada rtw_cfgvendor.h
+        sed -i '1s/^/#define ANDROID_NL80211_SUBCMD_PKT_FILTER_RANGE_START 0\n/' drivers/net/wireless/rtl8188eus/include/../os_dep/linux/rtw_cfgvendor.h
         
         # Fix Error KGSL GPU
         sed -i 's|#include <kgsl_device.h>|#include "kgsl_device.h"|g' drivers/gpu/msm/kgsl_events.c
