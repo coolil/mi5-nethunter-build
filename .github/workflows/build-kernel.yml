@@ -1,4 +1,4 @@
-name: Build Mi 5 NetHunter Kernel Super - Tahap 9
+name: Build Mi 5 NetHunter Kernel Super - Tahap 10
 
 on:
   workflow_dispatch:
@@ -65,8 +65,9 @@ jobs:
         sed -i 's/IEEE80211_BAND_2GHZ/NL80211_BAND_2GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.c
         sed -i 's/IEEE80211_BAND_5GHZ/NL80211_BAND_5GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.c
         
-        # [BARU] Fix Error total band nethunter pada file header ioctl_cfg80211.h
-        sed -i 's/NUM_NL80211_BANDS/__NL80211_BAND_AFTER_LAST/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
+        # [PERBAIKAN TOTAL] Ganti semua NUM_NL80211_BANDS di file .c dan .h pada folder os_dep/linux/ sekaligus
+        sed -i 's/NUM_NL80211_BANDS/__NL80211_BAND_AFTER_LAST/g' drivers/net/wireless/rtl8188eus/os_dep/linux/*.c
+        sed -i 's/NUM_NL80211_BANDS/__NL80211_BAND_AFTER_LAST/g' drivers/net/wireless/rtl8188eus/os_dep/linux/*.h
         
         # Fix Error KGSL GPU
         sed -i 's|#include <kgsl_device.h>|#include "kgsl_device.h"|g' drivers/gpu/msm/kgsl_events.c
