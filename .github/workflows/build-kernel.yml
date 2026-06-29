@@ -1,4 +1,4 @@
-name: Build Mi 5 NetHunter Kernel Super - Tahap 29 FINAL CLEAN SUCCESS
+name: Build Mi 5 NetHunter Kernel Super - Tahap 30 REAL SOURCE FIXED
 
 on:
   workflow_dispatch:
@@ -34,11 +34,9 @@ jobs:
         
         # 2. Matikan LTO agar kompatibel dengan GCC bawaan GitHub
         ./scripts/config --disable CONFIG_LTO_CLANG
-
-        # Matikan driver haptic drv2604 yang hobi merusak kompilasi
         ./scripts/config --disable CONFIG_INPUT_DRV2604
 
-        # 3. Fitur Utama NetHunter & USB Gadget (HID / Mass Storage)
+        # 3. Fitur Utama NetHunter & USB Gadget
         ./scripts/config --enable CONFIG_USB_GADGET
         ./scripts/config --enable CONFIG_USB_CONFIGFS
         ./scripts/config --enable CONFIG_USB_CONFIGFS_F_HID
@@ -60,15 +58,17 @@ jobs:
         ./scripts/config --set-val CONFIG_RT2800USB y
         ./scripts/config --set-val CONFIG_PRIMA_WLAN_MONITOR y
         
-        # 6. PERBAIKAN KODE KERNEL INTI & DRIVER
+        # 6. PERBAIKAN KODE KERNEL INTI & DRIVER (BERDASARKAN SUMBER RISET KERNEL)
         # Fix Error MAC80211
         sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' net/mac80211/*.c
         
-        # Bypass konversi band nirkabel Realtek tanpa merusak susunan file asli
+        # PERBAIKAN UTAMA DRIVER REALTEK: Paksa makro jadul memetakan ke Enum modern Linux 4.4
+        sed -i 's/#define NL80211_BAND_2GHZ IEEE80211_BAND_2GHZ/#define IEEE80211_BAND_2GHZ NL80211_BAND_2GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
+        sed -i 's/#define NL80211_BAND_5GHZ IEEE80211_BAND_5GHZ/#define IEEE80211_BAND_5GHZ NL80211_BAND_5GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
+
+        # Penyesuaian patch fungsi konversi band lokal nirkabel
         sed -i 's/rtw_band_to_nl80211_band(/rtw_band_to_nl80211_band_patched(/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.c
         sed -i 's/NUM_NL80211_BANDS/NL80211_BAND_2GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.c
-
-        # Hanya menyuntikkan makro patch konversi band saja, TANPA mendeklarasikan ulang fungsi bawaan pabrik agar tidak conflict
         echo "" >> drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
         echo "#define rtw_band_to_nl80211_band_patched(band) (enum nl80211_band)(((band) == BAND_ON_5G) ? NL80211_BAND_5GHZ : NL80211_BAND_2GHZ)" >> drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
         
@@ -77,13 +77,11 @@ jobs:
         sed -i 's/RTT_SUBCMD_SET_CONFIG/\/\/RTT_SUBCMD_SET_CONFIG/g' drivers/net/wireless/rtl8188eus/include/../os_dep/linux/rtw_cfgvendor.h
         sed -i 's/APF_SUBCMD_GET_CAPABILITIES/\/\/APF_SUBCMD_GET_CAPABILITIES/g' drivers/net/wireless/rtl8188eus/include/../os_dep/linux/rtw_cfgvendor.h
         
-        # Maksimalkan penjinak eror lokal Realtek (Paksa bypass warning dan error tidak krusial)
+        # Maksimalkan penjinak eror lokal Realtek
         echo "ccflags-y += -w -Wno-implicit-int -Wno-error -Wno-int-conversion -Wno-mismatched-function-types" >> drivers/net/wireless/rtl8188eus/Makefile
         
-        # Fix Error KGSL GPU
+        # Fix Error KGSL GPU & Kamera Common
         sed -i 's|#include <kgsl_device.h>|#include "kgsl_device.h"|g' drivers/gpu/msm/kgsl_events.c
-        
-        # Fix Error Kamera Common
         sed -i 's|#include <msm_camera_tz_util.h>|#include "msm_camera_tz_util.h"|g' drivers/media/platform/msm/camera_v2/common/cam_smmu_api.c
         
         # 7. Sinkronisasi konfigurasi otomatis secara aman
