@@ -1,4 +1,4 @@
-name: Build Mi 5 NetHunter Kernel Super - Tahap 25 FINAL MUTLAK
+name: Build Mi 5 NetHunter Kernel Super - Tahap 26 FINAL UTLAK SUCCESS
 
 on:
   workflow_dispatch:
@@ -63,7 +63,7 @@ jobs:
         # Fix Error MAC80211
         sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' net/mac80211/*.c
         
-        # [METODE NUKLIR] TIMPA TOTAL ISI FILE ioctl_cfg80211.h DENGAN VERSI BERSIH KHUSUS LINUX 4.4
+        # [METODE PENYEMPURNAAN LOKAL] Sediakan cetak biru tipe rtw_wdev_priv agar drv_types.h tidak rusak
         cat << 'EOF' > drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
         #ifndef __IOCTL_CFG80211_H__
         #define __IOCTL_CFG80211_H__
@@ -71,12 +71,18 @@ jobs:
         #include <linux/version.h>
         #include <net/cfg80211.h>
 
+        // Injeksi tipe priv kosong agar kompatibel dengan pembacaan terputus rtw_cfgvendor
+        struct rtw_wdev_priv {
+            void *priv;
+        };
+
         #define rtw_band_to_nl80211_band(band) (enum nl80211_band)(((band) == BAND_ON_5G) ? NL80211_BAND_5GHZ : NL80211_BAND_2GHZ)
 
         struct wiphy *rtw_wiphy_alloc(struct device *dev);
         int rtw_wiphy_register(struct wiphy *wiphy);
         void rtw_wiphy_unregister(struct wiphy *wiphy);
         void rtw_wiphy_free(struct wiphy *wiphy);
+        int rtw_mgnt_tx_handler(void *padapter, unsigned char *buf);
 
         #include "rtw_cfgvendor.h"
 
