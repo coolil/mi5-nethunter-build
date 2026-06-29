@@ -1,4 +1,4 @@
-name: Build Mi 5 NetHunter Kernel Super - FINAL
+name: Build Mi 5 NetHunter Kernel Super - Tahap 14
 
 on:
   workflow_dispatch:
@@ -72,12 +72,15 @@ jobs:
         # Fix Error Kamera Common
         sed -i 's|#include <msm_camera_tz_util.h>|#include "msm_camera_tz_util.h"|g' drivers/media/platform/msm/camera_v2/common/cam_smmu_api.c
         
+        # [BARU & AMAN] Menyuntikkan flag include drv2604 khusus untuk folder misc saja via Makefile lokal
+        echo "CFLAGS_drv2604.o := -include \$(srctree)/drivers/misc/drv2604.h" >> drivers/misc/Makefile
+        
         # 7. Sinkronisasi konfigurasi otomatis secara aman
         make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- olddefconfig
 
     - name: Compile Kernel (Strict Mode)
       run: |
-        # Menggunakan flag -include untuk drv2604.h secara bersih tanpa merusak isi file drv2604.c
+        # Menghapus flag -include global agar tidak mengacaukan fase pre-compile awal kernel
         export KCFLAGS="-I$GITHUB_WORKSPACE/drivers/gpu/msm \
                         -I$GITHUB_WORKSPACE/drivers/soc/qcom \
                         -I$GITHUB_WORKSPACE/sound/soc/msm \
@@ -87,7 +90,6 @@ jobs:
                         -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/sensor/io \
                         -I$GITHUB_WORKSPACE/drivers/misc \
                         -I$GITHUB_WORKSPACE/drivers/net/ethernet/msm \
-                        -include $GITHUB_WORKSPACE/drivers/misc/drv2604.h \
                         -I."
                         
         make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="$KCFLAGS" -j2
