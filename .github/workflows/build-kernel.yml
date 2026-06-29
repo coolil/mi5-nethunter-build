@@ -1,4 +1,4 @@
-name: Build Mi 5 NetHunter Kernel Super - Tahap 10
+name: Build Mi 5 NetHunter Kernel Super - Tahap 12
 
 on:
   workflow_dispatch:
@@ -23,7 +23,6 @@ jobs:
 
     - name: Clone External Driver RTL8188EUS (TP-Link v2/v3)
       run: |
-        # Unduh source code asli driver Realtek v2/v3
         git clone https://github.com/aircrack-ng/rtl8188eus.git drivers/net/wireless/rtl8188eus
         echo "obj-\$(CONFIG_RTL8188EU) += rtl8188eus/" >> drivers/net/wireless/Makefile
         echo 'source "drivers/net/wireless/rtl8188eus/Kconfig"' >> drivers/net/wireless/Kconfig
@@ -61,13 +60,13 @@ jobs:
         # Fix Error MAC80211
         sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' net/mac80211/*.c
         
-        # Fix Error pita frekuensi pada Driver RTL8188EUS agar cocok dengan Linux 4.4
-        sed -i 's/IEEE80211_BAND_2GHZ/NL80211_BAND_2GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.c
-        sed -i 's/IEEE80211_BAND_5GHZ/NL80211_BAND_5GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.c
+        # [PENJINAK REALTEK] Hapus makro bawaan rtw_band_to_nl80211_band yang memicu error tipe enum
+        sed -i '/#define rtw_band_to_nl80211_band/d' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
+        sed -i 's/NUM_NL80211_BANDS/NL80211_BAND_2GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/*.c
+        sed -i 's/NUM_NL80211_BANDS/NL80211_BAND_2GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/*.h
         
-        # [PERBAIKAN TOTAL] Ganti semua NUM_NL80211_BANDS di file .c dan .h pada folder os_dep/linux/ sekaligus
-        sed -i 's/NUM_NL80211_BANDS/__NL80211_BAND_AFTER_LAST/g' drivers/net/wireless/rtl8188eus/os_dep/linux/*.c
-        sed -i 's/NUM_NL80211_BANDS/__NL80211_BAND_AFTER_LAST/g' drivers/net/wireless/rtl8188eus/os_dep/linux/*.h
+        # Suntik balik makro baru yang dibungkus dengan tipe data (enum nl80211_band) agar kompiler patuh
+        echo '#define rtw_band_to_nl80211_band(band) (enum nl80211_band)(((band) == BAND_ON_5G) ? NL80211_BAND_5GHZ : NL80211_BAND_2GHZ)' >> drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
         
         # Fix Error KGSL GPU
         sed -i 's|#include <kgsl_device.h>|#include "kgsl_device.h"|g' drivers/gpu/msm/kgsl_events.c
@@ -76,14 +75,14 @@ jobs:
         sed -i 's|#include <msm_camera_tz_util.h>|#include "msm_camera_tz_util.h"|g' drivers/media/platform/msm/camera_v2/common/cam_smmu_api.c
         
         # Fix Error Haptic Driver drv2604
-        sed -i 's|#include <drv2604.h>|#include "drv2604.h"|g' drivers/misc/drv2604.c
+        sed -i 's|#include <drv2604.h>|g; s|#include "drv2604.h"|g' drivers/misc/drv2604.c
+        echo '#include "drv2604.h"' >> drivers/misc/drv2604.c
         
-        # 7. Sinkronisasi konfigurasi secara ketat
-        make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- oldconfig < /dev/null
+        # 7. SINKRONISASI OTOMATIS (Mengatasi Error in reading/end of file)
+        make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- olddefconfig
 
     - name: Compile Kernel (Strict Mode)
       run: |
-        # Menambahkan seluruh folder include yang sudah kita bedah bersama
         export KCFLAGS="-I$GITHUB_WORKSPACE/drivers/gpu/msm \
                         -I$GITHUB_WORKSPACE/drivers/soc/qcom \
                         -I$GITHUB_WORKSPACE/sound/soc/msm \
