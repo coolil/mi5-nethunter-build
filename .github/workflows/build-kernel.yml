@@ -1,4 +1,4 @@
-name: Build Mi 5 NetHunter Kernel Super - Tahap 22
+name: Build Mi 5 NetHunter Kernel Super - Tahap 23 FINAL
 
 on:
   workflow_dispatch:
@@ -59,32 +59,33 @@ jobs:
         ./scripts/config --set-val CONFIG_RT2800USB y
         ./scripts/config --set-val CONFIG_PRIMA_WLAN_MONITOR y
         
-        # 6. PERBAIKAN KODE KERNEL INTI
+        # 6. PERBAIKAN KODE KERNEL INTI & DRIVER
         # Fix Error MAC80211
         sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' net/mac80211/*.c
         
-        # [REVISI PATCH REALTEK] Menyusun ulang nethunter_patch.h agar tidak memicu error deklarasi ganda
+        # [REVISI PATCH TOTAL] Membuat file nethunter_patch.h yang sempurna untuk Realtek
         cat << 'EOF' > drivers/net/wireless/rtl8188eus/nethunter_patch.h
         #ifndef _NETHUNTER_PATCH_H_
         #define _NETHUNTER_PATCH_H_
-        #include <linux/types.h>
-        
-        // Mengamankan pembacaan makro band khusus untuk struktur Realtek internal
-        #ifdef __KERNEL__
-          #define IEEE80211_BAND_2GHZ NL80211_BAND_2GHZ
-          #define IEEE80211_BAND_5GHZ NL80211_BAND_5GHZ
-        #endif
+
+        // 1. Definisikan ulang makro konversi band penjinak untuk Linux 4.4
+        #define rtw_band_to_nl80211_band_patched(band) (enum nl80211_band)(((band) == BAND_ON_5G) ? NL80211_BAND_5GHZ : NL80211_BAND_2GHZ)
+
+        // 2. Pasok seluruh subcmd Android modern agar tipenya klop dengan enum rtw_cfgvendor.h
+        #define ANDROID_NL80211_SUBCMD_GSCAN_RANGE_START 0x1000
+        #define ANDROID_NL80211_SUBCMD_RTT_RANGE_START 0x2000
+        #define ANDROID_NL80211_SUBCMD_PKT_FILTER_RANGE_START 0x3000
+        #define ANDROID_NL80211_SUBCMD_PASSPOINT_RANGE_START 0x4000
+        #define ANDROID_NL80211_SUBCMD_WIFI_LOGGER_RANGE_START 0x5000
 
         #endif
         EOF
 
-        # Menyuntikkan patch otomatis langsung ke baris kode rtw_cfgvendor.h sebelum enum dimulai
-        sed -i 's/NUM_NL80211_BANDS/NL80211_BAND_2GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.c
-        sed -i '/#define rtw_band_to_nl80211_band/d' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
-        echo '#define rtw_band_to_nl80211_band(band) (enum nl80211_band)(((band) == BAND_ON_5G) ? NL80211_BAND_5GHZ : NL80211_BAND_2GHZ)' >> drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
-        
-        # Mengaitkan file header buatan kita ke Makefile Realtek lokal
-        echo "ccflags-y += -include \$(srctree)/drivers/net/wireless/rtl8188eus/nethunter_patch.h -Wno-implicit-int" >> drivers/net/wireless/rtl8188eus/Makefile
+        # Bajak pemanggilan fungsi makro asli Realtek langsung ke arah fungsi patched buatan kita
+        sed -i 's/rtw_band_to_nl80211_band(/rtw_band_to_nl80211_band_patched(/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.c
+
+        # Mengaitkan file header buatan kita ke Makefile Realtek lokal secara eksklusif
+        echo "ccflags-y += -include \$(srctree)/drivers/net/wireless/rtl8188eus/nethunter_patch.h -Wno-implicit-int -Wno-error" >> drivers/net/wireless/rtl8188eus/Makefile
         
         # Fix Error KGSL GPU
         sed -i 's|#include <kgsl_device.h>|#include "kgsl_device.h"|g' drivers/gpu/msm/kgsl_events.c
