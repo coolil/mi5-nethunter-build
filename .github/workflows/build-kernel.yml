@@ -1,4 +1,4 @@
-name: Build Mi 5 NetHunter Kernel Super - Tahap 30 REAL SOURCE FIXED
+name: Build Mi 5 NetHunter Kernel Super - Tahap 31 BAND FIXED
 
 on:
   workflow_dispatch:
@@ -58,11 +58,14 @@ jobs:
         ./scripts/config --set-val CONFIG_RT2800USB y
         ./scripts/config --set-val CONFIG_PRIMA_WLAN_MONITOR y
         
-        # 6. PERBAIKAN KODE KERNEL INTI & DRIVER (BERDASARKAN SUMBER RISET KERNEL)
+        # 6. PERBAIKAN KODE DRIVER (BERDASARKAN RISET LINUX 4.4)
         # Fix Error MAC80211
         sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' net/mac80211/*.c
         
-        # PERBAIKAN UTAMA DRIVER REALTEK: Paksa makro jadul memetakan ke Enum modern Linux 4.4
+        # [SOLUSI UTAMA] Hapus pendefinisian makro jembatan ke variabel punah IEEE80211_NUM_BANDS
+        sed -i '/#define NUM_NL80211_BANDS IEEE80211_NUM_BANDS/d' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
+
+        # Sesuaikan pemetaan logika enum frekuensi modern Linux 4.4
         sed -i 's/#define NL80211_BAND_2GHZ IEEE80211_BAND_2GHZ/#define IEEE80211_BAND_2GHZ NL80211_BAND_2GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
         sed -i 's/#define NL80211_BAND_5GHZ IEEE80211_BAND_5GHZ/#define IEEE80211_BAND_5GHZ NL80211_BAND_5GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
 
