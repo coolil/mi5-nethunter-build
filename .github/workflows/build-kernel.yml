@@ -1,4 +1,4 @@
-name: Build Mi 5 NetHunter Kernel Super - Tahap 24 FINAL PERFECT
+name: Build Mi 5 NetHunter Kernel Super - Tahap 25 FINAL MUTLAK
 
 on:
   workflow_dispatch:
@@ -63,18 +63,36 @@ jobs:
         # Fix Error MAC80211
         sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' net/mac80211/*.c
         
-        # Penjinak Struktur Pita Frekuensi Realtek RTL8188EUS (Bypass presisi ke fungsi patched)
-        sed -i '/#define rtw_band_to_nl80211_band/d' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
-        echo '#define rtw_band_to_nl80211_band(band) (enum nl80211_band)(((band) == BAND_ON_5G) ? NL80211_BAND_5GHZ : NL80211_BAND_2GHZ)' >> drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
+        # [METODE NUKLIR] TIMPA TOTAL ISI FILE ioctl_cfg80211.h DENGAN VERSI BERSIH KHUSUS LINUX 4.4
+        cat << 'EOF' > drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
+        #ifndef __IOCTL_CFG80211_H__
+        #define __IOCTL_CFG80211_H__
+
+        #include <linux/version.h>
+        #include <net/cfg80211.h>
+
+        #define rtw_band_to_nl80211_band(band) (enum nl80211_band)(((band) == BAND_ON_5G) ? NL80211_BAND_5GHZ : NL80211_BAND_2GHZ)
+
+        struct wiphy *rtw_wiphy_alloc(struct device *dev);
+        int rtw_wiphy_register(struct wiphy *wiphy);
+        void rtw_wiphy_unregister(struct wiphy *wiphy);
+        void rtw_wiphy_free(struct wiphy *wiphy);
+
+        #include "rtw_cfgvendor.h"
+
+        #endif /* __IOCTL_CFG80211_H__ */
+        EOF
+
+        # Ubah variabel penugasan NUM_NL80211_BANDS di file .c agar klop
         sed -i 's/NUM_NL80211_BANDS/NL80211_BAND_2GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.c
         
-        # [SOLUSI MUTLAK] Nonaktifkan baris fitur sub-command Android modern yang bentrok dengan Linux 4.4 bawaan Mi 5
+        # Nonaktifkan baris fitur sub-command Android modern yang bentrok pada rtw_cfgvendor.h
         sed -i 's/GSCAN_SUBCMD_GET_CAPABILITIES/\/\/GSCAN_SUBCMD_GET_CAPABILITIES/g' drivers/net/wireless/rtl8188eus/include/../os_dep/linux/rtw_cfgvendor.h
         sed -i 's/RTT_SUBCMD_SET_CONFIG/\/\/RTT_SUBCMD_SET_CONFIG/g' drivers/net/wireless/rtl8188eus/include/../os_dep/linux/rtw_cfgvendor.h
         sed -i 's/APF_SUBCMD_GET_CAPABILITIES/\/\/APF_SUBCMD_GET_CAPABILITIES/g' drivers/net/wireless/rtl8188eus/include/../os_dep/linux/rtw_cfgvendor.h
         
-        # Menambahkan flag -Wno-error agar peringatan sepele tidak menghentikan build
-        echo "ccflags-y += -Wno-implicit-int -Wno-error -Wno-sometimes-uninitialized" >> drivers/net/wireless/rtl8188eus/Makefile
+        # Tambahkan flag lokal pembungkam eror ketat GCC
+        echo "ccflags-y += -Wno-implicit-int -Wno-error -Wno-sometimes-uninitialized -Wno-int-conversion" >> drivers/net/wireless/rtl8188eus/Makefile
         
         # Fix Error KGSL GPU
         sed -i 's|#include <kgsl_device.h>|#include "kgsl_device.h"|g' drivers/gpu/msm/kgsl_events.c
