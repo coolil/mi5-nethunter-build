@@ -1,4 +1,4 @@
-name: Build Mi 5 NetHunter Kernel Super - Tahap 14
+name: Build Mi 5 NetHunter Kernel Super - Tahap 15
 
 on:
   workflow_dispatch:
@@ -34,6 +34,9 @@ jobs:
         
         # 2. Matikan LTO agar kompatibel dengan GCC bawaan GitHub
         ./scripts/config --disable CONFIG_LTO_CLANG
+
+        # [STRATEGI BARU] Matikan driver haptic drv2604 yang hobi merusak kompilasi
+        ./scripts/config --disable CONFIG_INPUT_DRV2604
 
         # 3. Fitur Utama NetHunter & USB Gadget (HID / Mass Storage)
         ./scripts/config --enable CONFIG_USB_GADGET
@@ -72,15 +75,11 @@ jobs:
         # Fix Error Kamera Common
         sed -i 's|#include <msm_camera_tz_util.h>|#include "msm_camera_tz_util.h"|g' drivers/media/platform/msm/camera_v2/common/cam_smmu_api.c
         
-        # [BARU & AMAN] Menyuntikkan flag include drv2604 khusus untuk folder misc saja via Makefile lokal
-        echo "CFLAGS_drv2604.o := -include \$(srctree)/drivers/misc/drv2604.h" >> drivers/misc/Makefile
-        
         # 7. Sinkronisasi konfigurasi otomatis secara aman
         make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- olddefconfig
 
     - name: Compile Kernel (Strict Mode)
       run: |
-        # Menghapus flag -include global agar tidak mengacaukan fase pre-compile awal kernel
         export KCFLAGS="-I$GITHUB_WORKSPACE/drivers/gpu/msm \
                         -I$GITHUB_WORKSPACE/drivers/soc/qcom \
                         -I$GITHUB_WORKSPACE/sound/soc/msm \
