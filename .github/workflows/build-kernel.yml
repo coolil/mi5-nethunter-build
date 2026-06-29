@@ -1,4 +1,4 @@
-name: Build Mi 5 NetHunter Kernel Super - Tahap 32 NFC FIXED
+name: Build Mi 5 NetHunter Kernel Super - Tahap 31 IPA FIXED
 
 on:
   workflow_dispatch:
@@ -58,7 +58,7 @@ jobs:
         ./scripts/config --set-val CONFIG_RT2800USB y
         ./scripts/config --set-val CONFIG_PRIMA_WLAN_MONITOR y
         
-        # 6. PERBAIKAN KODE DRIVER (BERDASARKAN RISET LOG & SUMBER)
+        # 6. PERBAIKAN KODE DRIVER (BERDASARKAN RISET LOG & SUMBER LUAR)
         # Fix Error MAC80211
         sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' net/mac80211/*.c
         
@@ -77,8 +77,11 @@ jobs:
         sed -i 's/APF_SUBCMD_GET_CAPABILITIES/\/\/APF_SUBCMD_GET_CAPABILITIES/g' drivers/net/wireless/rtl8188eus/include/../os_dep/linux/rtw_cfgvendor.h
         echo "ccflags-y += -w -Wno-implicit-int -Wno-error -Wno-int-conversion -Wno-mismatched-function-types" >> drivers/net/wireless/rtl8188eus/Makefile
         
-        # [SOLUSI UTAMA NFC] Ubah global include menjadi local include untuk Chip PN548
+        # Fix NFC Chip PN548
         sed -i 's|#include <pn548.h>|#include "pn548.h"|g' drivers/nfc/pn548/pn548.c
+
+        # [SOLUSI UTAMA QUALCOMM IPA] Suntikkan include path lokal ke Makefile ipa_v2 agar compiler menemukan ipa_trace.h
+        echo "ccflags-y += -I\$(src)" >> drivers/platform/msm/ipa/ipa_v2/Makefile
 
         # Fix Error KGSL GPU & Kamera Common
         sed -i 's|#include <kgsl_device.h>|#include "kgsl_device.h"|g' drivers/gpu/msm/kgsl_events.c
@@ -91,8 +94,8 @@ jobs:
       run: |
         export KCFLAGS="-I$GITHUB_WORKSPACE/drivers/gpu/msm \
                         -I$GITHUB_WORKSPACE/drivers/soc/qcom \
-                        -I$WORKSPACE/sound/soc/msm \
-                        -I$WORKSPACE/sound/soc/msm/qdsp6v2 \
+                        -I$GITHUB_WORKSPACE/sound/soc/msm \
+                        -I$GITHUB_WORKSPACE/sound/soc/msm/qdsp6v2 \
                         -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/isp \
                         -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/sensor \
                         -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/sensor/io \
