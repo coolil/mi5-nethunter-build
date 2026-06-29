@@ -1,4 +1,4 @@
-name: Build Mi 5 NetHunter Kernel Super - Tahap 31 BAND FIXED
+name: Build Mi 5 NetHunter Kernel Super - Tahap 32 NFC FIXED
 
 on:
   workflow_dispatch:
@@ -58,18 +58,14 @@ jobs:
         ./scripts/config --set-val CONFIG_RT2800USB y
         ./scripts/config --set-val CONFIG_PRIMA_WLAN_MONITOR y
         
-        # 6. PERBAIKAN KODE DRIVER (BERDASARKAN RISET LINUX 4.4)
+        # 6. PERBAIKAN KODE DRIVER (BERDASARKAN RISET LOG & SUMBER)
         # Fix Error MAC80211
         sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' net/mac80211/*.c
         
-        # [SOLUSI UTAMA] Hapus pendefinisian makro jembatan ke variabel punah IEEE80211_NUM_BANDS
+        # Perbaikan Driver Realtek Wi-Fi
         sed -i '/#define NUM_NL80211_BANDS IEEE80211_NUM_BANDS/d' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
-
-        # Sesuaikan pemetaan logika enum frekuensi modern Linux 4.4
         sed -i 's/#define NL80211_BAND_2GHZ IEEE80211_BAND_2GHZ/#define IEEE80211_BAND_2GHZ NL80211_BAND_2GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
         sed -i 's/#define NL80211_BAND_5GHZ IEEE80211_BAND_5GHZ/#define IEEE80211_BAND_5GHZ NL80211_BAND_5GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
-
-        # Penyesuaian patch fungsi konversi band lokal nirkabel
         sed -i 's/rtw_band_to_nl80211_band(/rtw_band_to_nl80211_band_patched(/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.c
         sed -i 's/NUM_NL80211_BANDS/NL80211_BAND_2GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.c
         echo "" >> drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
@@ -79,10 +75,11 @@ jobs:
         sed -i 's/GSCAN_SUBCMD_GET_CAPABILITIES/\/\/GSCAN_SUBCMD_GET_CAPABILITIES/g' drivers/net/wireless/rtl8188eus/include/../os_dep/linux/rtw_cfgvendor.h
         sed -i 's/RTT_SUBCMD_SET_CONFIG/\/\/RTT_SUBCMD_SET_CONFIG/g' drivers/net/wireless/rtl8188eus/include/../os_dep/linux/rtw_cfgvendor.h
         sed -i 's/APF_SUBCMD_GET_CAPABILITIES/\/\/APF_SUBCMD_GET_CAPABILITIES/g' drivers/net/wireless/rtl8188eus/include/../os_dep/linux/rtw_cfgvendor.h
-        
-        # Maksimalkan penjinak eror lokal Realtek
         echo "ccflags-y += -w -Wno-implicit-int -Wno-error -Wno-int-conversion -Wno-mismatched-function-types" >> drivers/net/wireless/rtl8188eus/Makefile
         
+        # [SOLUSI UTAMA NFC] Ubah global include menjadi local include untuk Chip PN548
+        sed -i 's|#include <pn548.h>|#include "pn548.h"|g' drivers/nfc/pn548/pn548.c
+
         # Fix Error KGSL GPU & Kamera Common
         sed -i 's|#include <kgsl_device.h>|#include "kgsl_device.h"|g' drivers/gpu/msm/kgsl_events.c
         sed -i 's|#include <msm_camera_tz_util.h>|#include "msm_camera_tz_util.h"|g' drivers/media/platform/msm/camera_v2/common/cam_smmu_api.c
@@ -94,8 +91,8 @@ jobs:
       run: |
         export KCFLAGS="-I$GITHUB_WORKSPACE/drivers/gpu/msm \
                         -I$GITHUB_WORKSPACE/drivers/soc/qcom \
-                        -I$GITHUB_WORKSPACE/sound/soc/msm \
-                        -I$GITHUB_WORKSPACE/sound/soc/msm/qdsp6v2 \
+                        -I$WORKSPACE/sound/soc/msm \
+                        -I$WORKSPACE/sound/soc/msm/qdsp6v2 \
                         -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/isp \
                         -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/sensor \
                         -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/sensor/io \
