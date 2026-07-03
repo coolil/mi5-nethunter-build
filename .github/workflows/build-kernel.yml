@@ -1,4 +1,4 @@
-name: Build Mi 5 NetHunter Kernel Super - Tahap 31 IPA FIXED
+name: Build Mi 5 NetHunter Kernel Super - Tahap 32 RAW FIXED
 
 on:
   workflow_dispatch:
@@ -80,12 +80,12 @@ jobs:
         # Fix Error MAC80211
         sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' net/mac80211/*.c
 
-        # [INJEKSI BYPASS QUALCOMM QCACLD MONITOR MODE - FIXED 100%]
-        # A. Loloskan status WLAN_HDD_MONITOR pada filter IF utama dengan tanda kurung penutup ganda '))' yang valid
-        sed -i 's/(pAdapter->device_mode == WLAN_HDD_IBSS))/(pAdapter->device_mode == WLAN_HDD_IBSS) || (pAdapter->device_mode == WLAN_HDD_MONITOR))/g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c
+        # [INJEKSI BYPASS QUALCOMM QCACLD MONITOR MODE - SAKTI TAHAP 32]
+        # A. Loloskan status WLAN_HDD_MONITOR pada kondisi IF utama tanpa merusak kurung penutup bawaan
+        sed -i 's/if ((pAdapter->device_mode == WLAN_HDD_INFRA_STATION) ||/if ((pAdapter->device_mode == WLAN_HDD_INFRA_STATION) || (pAdapter->device_mode == WLAN_HDD_MONITOR) ||/g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c
 
-        # B. Suntikkan case monitor tepat sebelum case station di dalam block switch statement yang sah
-        sed -i '/case NL80211_IFTYPE_STATION:/i \        case NL80211_IFTYPE_MONITOR:\n           if (type == NL80211_IFTYPE_MONITOR) {\n               pAdapter->device_mode = WLAN_HDD_MONITOR;\n               wlan_hdd_tdls_exit(pAdapter);\n               wlan_hdd_clean_tx_flow_control_timer(pHddCtx, pAdapter);\n               hddLog(LOG1, "NetHunter: Forcing device_mode to WLAN_HDD_MONITOR");\n           }' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c
+        # B. Suntikkan case monitor dan potong kompas langsung ke label 'done' agar tidak tersendat fungsi client mode bawaan
+        sed -i '/case NL80211_IFTYPE_STATION:/i \        case NL80211_IFTYPE_MONITOR:\n           if (type == NL80211_IFTYPE_MONITOR) {\n               pAdapter->device_mode = WLAN_HDD_MONITOR;\n               wlan_hdd_tdls_exit(pAdapter);\n               wlan_hdd_clean_tx_flow_control_timer(pHddCtx, pAdapter);\n               hddLog(LOG1, "NetHunter: Forcing device_mode to WLAN_HDD_MONITOR");\n               if (wdev) { wdev->iftype = type; pHddCtx->change_iface = type; }\n               goto done;\n           }' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c
         
         # Perbaikan Driver Realtek Wi-Fi
         sed -i '/#define NUM_NL80211_BANDS IEEE80211_NUM_BANDS/d' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
@@ -133,19 +133,19 @@ jobs:
                         
         make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="$KCFLAGS" -j2
 
-    - name: Package Kernel with AnyKernel3 (Flashable Zip)
+    - name: Package Raw Bins (No AnyKernel3)
       run: |
-        cd $GITHUB_WORKSPACE
-        git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git anykernel
-        cd anykernel
-        sed -i 's/do.devicecheck=1/do.devicecheck=0/g' anykernel.sh
-        sed -i 's/block=\/dev\/block\/platform\/omap\/omap_hsmmc.0\/by-name\/boot;/block=auto;/g' anykernel.sh
-        cp $GITHUB_WORKSPACE/arch/arm64/boot/Image.gz-dtb ./Image.gz-dtb
-        zip -r9 $GITHUB_WORKSPACE/NetHunter-Kernel-Gemini-Flashable.zip *
+        mkdir output_bins
+        # Menyalin file utama Image.gz-dtb
+        cp arch/arm64/boot/Image.gz-dtb ./output_bins/
+        
+        # Bungkus ke zip biasa
+        cd output_bins
+        zip -r9 ../NetHunter-Kernel-Gemini-Raw-Files.zip *
 
-    - name: Upload Flashable Kernel Zip
+    - name: Upload Raw Kernel Zip
       if: success()
       uses: actions/upload-artifact@v4
       with:
-        name: NetHunter-Kernel-Mi5-Flashable-Zip
-        path: NetHunter-Kernel-Gemini-Flashable.zip
+        name: NetHunter-Kernel-Mi5-Raw-Files
+        path: NetHunter-Kernel-Gemini-Raw-Files.zip
