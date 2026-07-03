@@ -81,7 +81,7 @@ jobs:
         sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' net/mac80211/*.c
 
         # [INJEKSI BYPASS QUALCOMM QCACLD MONITOR MODE]
-        sed -i '/case NL80211_IFTYPE_ADHOC:/a \        case NL80211_IFTYPE_MONITOR:\n            if (type == NL80211_IFTYPE_MONITOR) {\n                pConfig->con_mode = 4;\n                hddLog(LOG1, "NetHunter: Forcing Qualcomm con_mode to MONITOR (4)");\n            }' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c
+        sed -i '/LastBSSType = pRoamProfile->BSSType;/a \        case NL80211_IFTYPE_MONITOR:\n           if (type == NL80211_IFTYPE_MONITOR) {\n               pAdapter->device_mode = WLAN_HDD_MONITOR_MODE;\n               wlan_hdd_tdls_exit(pAdapter);\n               wlan_hdd_clean_tx_flow_control_timer(pHddCtx, pAdapter);\n               hddLog(LOG1, "NetHunter: Forcing device_mode to WLAN_HDD_MONITOR_MODE");\n           }' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c
         
         # Perbaikan Driver Realtek Wi-Fi
         sed -i '/#define NUM_NL80211_BANDS IEEE80211_NUM_BANDS/d' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
@@ -129,9 +129,19 @@ jobs:
                         
         make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="$KCFLAGS" -j2
 
-    - name: Upload Kernel Image (Image.gz-dtb)
+    - name: Package Kernel with AnyKernel3 (Flashable Zip)
+      run: |
+        cd $GITHUB_WORKSPACE
+        git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git anykernel
+        cd anykernel
+        sed -i 's/do.devicecheck=1/do.devicecheck=0/g' anykernel.sh
+        sed -i 's/block=\/dev\/block\/platform\/omap\/omap_hsmmc.0\/by-name\/boot;/block=auto;/g' anykernel.sh
+        cp $GITHUB_WORKSPACE/arch/arm64/boot/Image.gz-dtb ./Image.gz-dtb
+        zip -r9 $GITHUB_WORKSPACE/NetHunter-Kernel-Gemini-Flashable.zip *
+
+    - name: Upload Flashable Kernel Zip
       if: success()
       uses: actions/upload-artifact@v4
       with:
-        name: NetHunter-Kernel-Image-Mi5
-        path: arch/arm64/boot/Image.gz-dtb
+        name: NetHunter-Kernel-Mi5-Flashable-Zip
+        path: NetHunter-Kernel-Gemini-Flashable.zip
