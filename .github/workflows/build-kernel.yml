@@ -80,8 +80,12 @@ jobs:
         # Fix Error MAC80211
         sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' net/mac80211/*.c
 
-        # [INJEKSI BYPASS QUALCOMM QCACLD MONITOR MODE]
-        sed -i '/LastBSSType = pRoamProfile->BSSType;/a \        case NL80211_IFTYPE_MONITOR:\n           if (type == NL80211_IFTYPE_MONITOR) {\n               pAdapter->device_mode = WLAN_HDD_MONITOR_MODE;\n               wlan_hdd_tdls_exit(pAdapter);\n               wlan_hdd_clean_tx_flow_control_timer(pHddCtx, pAdapter);\n               hddLog(LOG1, "NetHunter: Forcing device_mode to WLAN_HDD_MONITOR_MODE");\n           }' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c
+        # [INJEKSI BYPASS QUALCOMM QCACLD MONITOR MODE - FIXED 100%]
+        # A. Loloskan status WLAN_HDD_MONITOR pada filter IF utama agar runtime tidak crash / lock
+        sed -i 's/(pAdapter->device_mode == WLAN_HDD_IBSS))/(pAdapter->device_mode == WLAN_HDD_IBSS) || (pAdapter->device_mode == WLAN_HDD_MONITOR)/g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c
+
+        # B. Suntikkan case monitor tepat sebelum case station di dalam block switch statement yang sah
+        sed -i '/case NL80211_IFTYPE_STATION:/i \        case NL80211_IFTYPE_MONITOR:\n           if (type == NL80211_IFTYPE_MONITOR) {\n               pAdapter->device_mode = WLAN_HDD_MONITOR;\n               wlan_hdd_tdls_exit(pAdapter);\n               wlan_hdd_clean_tx_flow_control_timer(pHddCtx, pAdapter);\n               hddLog(LOG1, "NetHunter: Forcing device_mode to WLAN_HDD_MONITOR");\n           }' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c
         
         # Perbaikan Driver Realtek Wi-Fi
         sed -i '/#define NUM_NL80211_BANDS IEEE80211_NUM_BANDS/d' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
