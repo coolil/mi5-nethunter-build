@@ -19,7 +19,7 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev bison flex libelf-dev
-        sudo apt-get install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
+        sudo apt-get install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi unzip p7zip-full wget
 
     - name: Clone External Driver RTL8188EUS (TP-Link v2/v3)
       run: |
@@ -126,9 +126,48 @@ jobs:
                         
         make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="$KCFLAGS" -j2
 
-    - name: Upload Kernel Result
+    - name: Repack Image to Flashable boot.img
+      run: |
+        mkdir -p $GITHUB_WORKSPACE/repack
+        cd $GITHUB_WORKSPACE/repack
+        
+        # 1. Download official boot.img dari mirror PixelExperience 12.1 Gemini (Eol Unofficial)
+        # Menggunakan tautan langsung ke server dump/sourceforge/archive PE gemini
+        wget -O pe_boot.img "https://sourceforge.net/projects/b-b-kernel/files/donor/boot.img/download" || \
+        wget -O pe_boot.img "https://github.com/B--B/Gemini-B--B-Kernel/releases/download/twelve-4.4-inline/boot.img" || true
+        
+        # Jika donor boot.img tidak sengaja gagal terunduh via tautan statis, buat tiruan fallback AndroidKitchen
+        if [ ! -f pe_boot.img ]; then
+          echo "[!] Gagal mengunduh boot.img donor asli secara otomatis. Silakan periksa kembali tautan berkas."
+          exit 1
+        fi
+        
+        # 2. Ambil perkakas Android Image Kitchen CLI / magiskboot untuk membelah & menyatukan boot.img
+        wget -O magiskboot.zip "https://github.com/Zackptg5/Magisk/raw/master/Magisk-v25.2.zip" || \
+        git clone --depth=1 https://github.com/OSFP/magiskboot_binaries.git toolbin
+        
+        if [ -d toolbin ]; then
+          cp toolbin/system/bin/magiskboot_x86_64 ./magiskboot
+        else
+          unzip -j magiskboot.zip "lib/x86_64/libmagiskboot.so" -d . && mv libmagiskboot.so magiskboot
+        fi
+        chmod +x magiskboot
+        
+        # 3. Ekstrak boot.img donor Pixel Experience asli
+        ./magiskboot unpack pe_boot.img
+        
+        # 4. Ganti kernel lama di struktur ramdisk dengan hasil build baru (Image.gz-dtb)
+        cp $GITHUB_WORKSPACE/arch/arm64/boot/Image.gz-dtb ./kernel
+        
+        # 5. Kemas kembali menjadi boot.img siap pakai
+        ./magiskboot repack pe_boot.img netHunter_boot.img
+        
+        # Pindahkan ke root workspace agar terbaca artifact
+        cp netHunter_boot.img $GITHUB_WORKSPACE/boot.img
+
+    - name: Upload Flashable Boot Image
       if: success()
       uses: actions/upload-artifact@v4
       with:
-        name: NetHunter-Kernel-Mi5-Super
-        path: arch/arm64/boot/Image.gz-dtb
+        name: NetHunter-Boot-PixelExperience-Mi5
+        path: boot.img
