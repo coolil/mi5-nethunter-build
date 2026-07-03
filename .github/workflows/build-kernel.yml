@@ -105,6 +105,9 @@ jobs:
         sed -i 's|#include <kgsl_device.h>|#include "kgsl_device.h"|g' drivers/gpu/msm/kgsl_events.c
         sed -i 's|#include <msm_camera_tz_util.h>|#include "msm_camera_tz_util.h"|g' drivers/media/platform/msm/camera_v2/common/cam_smmu_api.c
         
+        # [FIX BLUETOOTH ERRS] Mengalihkan inisialisasi rx_lock ke proto_lock yang kompatibel dengan MSM8996 upstream
+        sed -i 's/spin_lock_init(&hu->rx_lock);/spin_lock_init(\&hu->proto_lock);/g' drivers/bluetooth/hci_ldisc.c
+        
         # 7. Sinkronisasi konfigurasi otomatis secara aman
         make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- olddefconfig
 
@@ -116,7 +119,7 @@ jobs:
                         -I$GITHUB_WORKSPACE/sound/soc/msm/qdsp6v2 \
                         -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/isp \
                         -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/sensor \
-                        -I$WORKSPACE/drivers/media/platform/msm/camera_v2/sensor/io \
+                        -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/sensor/io \
                         -I$GITHUB_WORKSPACE/drivers/misc \
                         -I$GITHUB_WORKSPACE/drivers/net/ethernet/msm \
                         -I."
