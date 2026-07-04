@@ -1,4 +1,4 @@
-name: Build Mi 5 NetHunter Kernel Super - Tahap 32 RAW FIXED
+name: Build Mi 5 NetHunter Kernel Super - Tahap 33 RAW FIXED
 
 on:
   workflow_dispatch:
@@ -80,7 +80,7 @@ jobs:
         # Fix Error MAC80211
         sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' net/mac80211/*.c
 
-        # [INJEKSI BYPASS QUALCOMM QCACLD MONITOR MODE - SAKTI TAHAP 32 FIXED]
+        # [INJEKSI BYPASS QUALCOMM QCACLD MONITOR MODE - SAKTI TAHAP 33 FIXED]
         # A. Loloskan status WLAN_HDD_MONITOR pada kondisi IF utama agar tidak diblokir di awal
         sed -i 's/if ((pAdapter->device_mode == WLAN_HDD_INFRA_STATION) ||/if ((pAdapter->device_mode == WLAN_HDD_INFRA_STATION) || (pAdapter->device_mode == WLAN_HDD_MONITOR) ||/g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c
 
@@ -88,35 +88,19 @@ jobs:
         sed -i '/   case NL80211_IFTYPE_AP:/i \        case NL80211_IFTYPE_MONITOR:\n           wdev->iftype = type;\n           pAdapter->device_mode = WLAN_HDD_MONITOR;\n           hddLog(LOG1, "NetHunter: Core Bypass Success! Mode set to MONITOR");\n           goto done;\n' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c
         
         # =========================================================================
-        # INJEKSI TINGKAT DEWA: FIX INTERFACE LENYAP & IOCTL WEXT HANDLER (QCACLD-2.0)
+        # INJEKSI TINGKAT DEWA V2: FIX INTERFACE LENYAP & IOCTL WEXT HANDLER PENGUNCI MONITOR
         # =========================================================================
         
         # C. TAMENG PROTEKSI INTERFACE DI __hdd_stop (Mencegah Eksekusi hdd_cleanup_adapter)
-        # Mencari penanda proteksi interface NAN (NDI) milik Qualcomm, lalu menyisipkan tameng Monitor Mode tepat di bawahnya
         sed -i '/if (WLAN_HDD_IS_NDI(pAdapter))/a \   if (pAdapter->device_mode == WLAN_HDD_MONITOR) {\n      pr_info("NetHunter_Engine: Monitor Mode active. Bypassing BSS termination and adapter deletion.\\n");\n      return 0;\n   }' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_main.c
 
-        # D. SUNTIKKAN FUNGSI HANDLER KUSTOM DI ATAS ARRAY we_handler PADA wlan_hdd_wext.c
-        # Kita buat fungsi set/get mode secara legal agar airodump-ng mendapatkan respon valid (IW_MODE_MONITOR = 6)
-        sed -i '/static const iw_handler      we_handler\[\] =/i \
-        static int hdd_set_wextmode(struct net_device *dev, struct iw_request_info *info, union iwreq_data *wrqu, char *extra) {\n\
-           hdd_adapter_t *adapter = netdev_priv(dev);\n\
-           if (wrqu->mode == 6) {\n\
-               adapter->device_mode = WLAN_HDD_MONITOR;\n\
-               pr_info("NetHunter_Fix: Forced adapter->device_mode to WLAN_HDD_MONITOR via WEXT ioctl\\n");\n\
-               return 0;\n\
-           }\n\
-           return -EOPNOTSUPP;\n\
-        }\n\
-        static int hdd_get_wextmode(struct net_device *dev, struct iw_request_info *info, union iwreq_data *wrqu, char *extra) {\n\
-           hdd_adapter_t *adapter = netdev_priv(dev);\n\
-           if (adapter->device_mode == WLAN_HDD_MONITOR) wrqu->mode = 6;\n\
-           else wrqu->mode = 2;\n\
-           return 0;\n\
-        }\n' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_wext.c
+        # D. SUNTIKKAN FUNGSI HANDLER KUSTOM SECARA INLINE DI ATAS ARRAY we_handler PADA wlan_hdd_wext.c
+        # Ditambahkan explicit type casting (hdd_adapter_t *) untuk menjamin kepatuhan standar kompilasi GCC
+        sed -i '/static const iw_handler      we_handler\[\] =/i static int hdd_set_wextmode(struct net_device *dev, struct iw_request_info *info, union iwreq_data *wrqu, char *extra) { hdd_adapter_t *adapter = (hdd_adapter_t *)netdev_priv(dev); if (wrqu->mode == 6) { adapter->device_mode = WLAN_HDD_MONITOR; pr_info("NetHunter_Fix: Forced adapter->device_mode to WLAN_HDD_MONITOR via WEXT ioctl\\n"); return 0; } return -EOPNOTSUPP; }\nstatic int hdd_get_wextmode(struct net_device *dev, struct iw_request_info *info, union iwreq_data *wrqu, char *extra) { hdd_adapter_t *adapter = (hdd_adapter_t *)netdev_priv(dev); if (adapter->device_mode == WLAN_HDD_MONITOR) wrqu->mode = 6; else wrqu->mode = 2; return 0; }\n' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_wext.c
 
-        # E. PASANG HANDLER KUSTOM KITA UNTUK MENGGANTIKAN "NULL" PADA SIOCSIWMODE & SIOCGIWMODE
-        sed -i 's/(iw_handler) NULL,             \/\* SIOCSIWMODE \*\//(iw_handler) hdd_set_wextmode,             \/\* SIOCSIWMODE \*\//g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_wext.c
-        sed -i 's/(iw_handler) NULL,             \/\* SIOCGIWMODE \*\//(iw_handler) hdd_get_wextmode,             \/\* SIOCGIWMODE \*\//g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_wext.c
+        # E. LIBAS NULL PADA SIOCSIWMODE / SIOCGIWMODE MENGGUNAKAN POSIX SPACE REGEX (ANTI SPARE KOSONG / TAB KHILAF)
+        sed -i 's/(iw_handler)[[:space:]]*NULL,[[:space:]]*\/\*[[:space:]]*SIOCSIWMODE[[:space:]]*\*\//(iw_handler) hdd_set_wextmode,             \/\* SIOCSIWMODE \*\//g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_wext.c
+        sed -i 's/(iw_handler)[[:space:]]*NULL,[[:space:]]*\/\*[[:space:]]*SIOCGIWMODE[[:space:]]*\*\//(iw_handler) hdd_get_wextmode,             \/\* SIOCGIWMODE \*\//g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_wext.c
         
         # =========================================================================
 
