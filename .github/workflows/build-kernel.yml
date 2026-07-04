@@ -87,6 +87,39 @@ jobs:
         # B. MENEMPATKAN CASE MONITOR TEPAT DI ATAS DEFAULT AGAR TIDAK TERJEBAK IF CONDITION STATION
         sed -i '/   case NL80211_IFTYPE_AP:/i \        case NL80211_IFTYPE_MONITOR:\n           wdev->iftype = type;\n           pAdapter->device_mode = WLAN_HDD_MONITOR;\n           hddLog(LOG1, "NetHunter: Core Bypass Success! Mode set to MONITOR");\n           goto done;\n' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c
         
+        # =========================================================================
+        # INJEKSI TINGKAT DEWA: FIX INTERFACE LENYAP & IOCTL WEXT HANDLER (QCACLD-2.0)
+        # =========================================================================
+        
+        # C. TAMENG PROTEKSI INTERFACE DI __hdd_stop (Mencegah Eksekusi hdd_cleanup_adapter)
+        # Mencari penanda proteksi interface NAN (NDI) milik Qualcomm, lalu menyisipkan tameng Monitor Mode tepat di bawahnya
+        sed -i '/if (WLAN_HDD_IS_NDI(pAdapter))/a \   if (pAdapter->device_mode == WLAN_HDD_MONITOR) {\n      pr_info("NetHunter_Engine: Monitor Mode active. Bypassing BSS termination and adapter deletion.\\n");\n      return 0;\n   }' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_main.c
+
+        # D. SUNTIKKAN FUNGSI HANDLER KUSTOM DI ATAS ARRAY we_handler PADA wlan_hdd_wext.c
+        # Kita buat fungsi set/get mode secara legal agar airodump-ng mendapatkan respon valid (IW_MODE_MONITOR = 6)
+        sed -i '/static const iw_handler      we_handler\[\] =/i \
+        static int hdd_set_wextmode(struct net_device *dev, struct iw_request_info *info, union iwreq_data *wrqu, char *extra) {\n\
+           hdd_adapter_t *adapter = netdev_priv(dev);\n\
+           if (wrqu->mode == 6) {\n\
+               adapter->device_mode = WLAN_HDD_MONITOR;\n\
+               pr_info("NetHunter_Fix: Forced adapter->device_mode to WLAN_HDD_MONITOR via WEXT ioctl\\n");\n\
+               return 0;\n\
+           }\n\
+           return -EOPNOTSUPP;\n\
+        }\n\
+        static int hdd_get_wextmode(struct net_device *dev, struct iw_request_info *info, union iwreq_data *wrqu, char *extra) {\n\
+           hdd_adapter_t *adapter = netdev_priv(dev);\n\
+           if (adapter->device_mode == WLAN_HDD_MONITOR) wrqu->mode = 6;\n\
+           else wrqu->mode = 2;\n\
+           return 0;\n\
+        }\n' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_wext.c
+
+        # E. PASANG HANDLER KUSTOM KITA UNTUK MENGGANTIKAN "NULL" PADA SIOCSIWMODE & SIOCGIWMODE
+        sed -i 's/(iw_handler) NULL,             \/\* SIOCSIWMODE \*\//(iw_handler) hdd_set_wextmode,             \/\* SIOCSIWMODE \*\//g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_wext.c
+        sed -i 's/(iw_handler) NULL,             \/\* SIOCGIWMODE \*\//(iw_handler) hdd_get_wextmode,             \/\* SIOCGIWMODE \*\//g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_wext.c
+        
+        # =========================================================================
+
         # Perbaikan Driver Realtek Wi-Fi
         sed -i '/#define NUM_NL80211_BANDS IEEE80211_NUM_BANDS/d' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
         sed -i 's/#define NL80211_BAND_2GHZ IEEE80211_BAND_2GHZ/#define IEEE80211_BAND_2GHZ NL80211_BAND_2GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
