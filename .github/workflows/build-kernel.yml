@@ -1,4 +1,4 @@
-Name: Build Mi 5 NetHunter Kernel Super - Tahap 32 RAW FIXED
+name: Build Mi 5 NetHunter Kernel Super - Tahap 32 RAW FIXED
 
 on:
   workflow_dispatch:
@@ -123,7 +123,7 @@ jobs:
         export KCFLAGS="-I$GITHUB_WORKSPACE/drivers/gpu/msm \
                         -I$GITHUB_WORKSPACE/drivers/soc/qcom \
                         -I$GITHUB_WORKSPACE/sound/soc/msm \
-                        -I$WORKSPACE/sound/soc/msm/qdsp6v2 \
+                        -I$GITHUB_WORKSPACE/sound/soc/msm/qdsp6v2 \
                         -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/isp \
                         -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/sensor \
                         -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/sensor/io \
