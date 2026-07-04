@@ -1,4 +1,4 @@
-name: Build Mi 5 NetHunter Kernel Super - Tahap 32 RAW FIXED
+Name: Build Mi 5 NetHunter Kernel Super - Tahap 32 RAW FIXED
 
 on:
   workflow_dispatch:
@@ -80,12 +80,12 @@ jobs:
         # Fix Error MAC80211
         sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' net/mac80211/*.c
 
-        # [INJEKSI BYPASS QUALCOMM QCACLD MONITOR MODE - SAKTI TAHAP 32]
-        # A. Loloskan status WLAN_HDD_MONITOR pada kondisi IF utama tanpa merusak kurung penutup bawaan
+        # [INJEKSI BYPASS QUALCOMM QCACLD MONITOR MODE - SAKTI TAHAP 32 FIXED]
+        # A. Loloskan status WLAN_HDD_MONITOR pada kondisi IF utama agar tidak diblokir di awal
         sed -i 's/if ((pAdapter->device_mode == WLAN_HDD_INFRA_STATION) ||/if ((pAdapter->device_mode == WLAN_HDD_INFRA_STATION) || (pAdapter->device_mode == WLAN_HDD_MONITOR) ||/g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c
 
-        # B. Suntikkan case monitor dan potong kompas langsung ke label 'done' agar tidak tersendat fungsi client mode bawaan
-        sed -i '/case NL80211_IFTYPE_STATION:/i \        case NL80211_IFTYPE_MONITOR:\n           if (type == NL80211_IFTYPE_MONITOR) {\n               pAdapter->device_mode = WLAN_HDD_MONITOR;\n               wlan_hdd_tdls_exit(pAdapter);\n               wlan_hdd_clean_tx_flow_control_timer(pHddCtx, pAdapter);\n               hddLog(LOG1, "NetHunter: Forcing device_mode to WLAN_HDD_MONITOR");\n               if (wdev) { wdev->iftype = type; pHddCtx->change_iface = type; }\n               goto done;\n           }' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c
+        # B. MENEMPATKAN CASE MONITOR TEPAT DI ATAS DEFAULT AGAR TIDAK TERJEBAK IF CONDITION STATION
+        sed -i '/   case NL80211_IFTYPE_AP:/i \        case NL80211_IFTYPE_MONITOR:\n           wdev->iftype = type;\n           pAdapter->device_mode = WLAN_HDD_MONITOR;\n           hddLog(LOG1, "NetHunter: Core Bypass Success! Mode set to MONITOR");\n           goto done;\n' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c
         
         # Perbaikan Driver Realtek Wi-Fi
         sed -i '/#define NUM_NL80211_BANDS IEEE80211_NUM_BANDS/d' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
@@ -102,7 +102,7 @@ jobs:
         sed -i 's/APF_SUBCMD_GET_CAPABILITIES/\/\/APF_SUBCMD_GET_CAPABILITIES/g' drivers/net/wireless/rtl8188eus/include/../os_dep/linux/rtw_cfgvendor.h
         echo "ccflags-y += -w -Wno-implicit-int -Wno-error -Wno-int-conversion -Wno-mismatched-function-types" >> drivers/net/wireless/rtl8188eus/Makefile
         
-        # Fix NFC Chip PN548
+        # Fix Error NFC Chip PN548
         sed -i 's|#include <pn548.h>|#include "pn548.h"|g' drivers/nfc/pn548/pn548.c
 
         # [SOLUSI UTAMA QUALCOMM IPA] Suntikkan include path lokal ke Makefile ipa_v2 agar compiler menemukan ipa_trace.h
@@ -123,7 +123,7 @@ jobs:
         export KCFLAGS="-I$GITHUB_WORKSPACE/drivers/gpu/msm \
                         -I$GITHUB_WORKSPACE/drivers/soc/qcom \
                         -I$GITHUB_WORKSPACE/sound/soc/msm \
-                        -I$GITHUB_WORKSPACE/sound/soc/msm/qdsp6v2 \
+                        -I$WORKSPACE/sound/soc/msm/qdsp6v2 \
                         -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/isp \
                         -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/sensor \
                         -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/sensor/io \
