@@ -1,4 +1,4 @@
-name: Build Mi 5 NetHunter Kernel Super - Tahap 34 PERFECT FIX
+name: Build Mi 5 NetHunter Kernel Super + KernelSU - Tahap 35 PERFECT FIX
 
 on:
   workflow_dispatch:
@@ -19,7 +19,20 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev bison flex libelf-dev
-        sudo apt-get install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi unzip p7zip-full wget
+        sudo apt-get install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi unzip p7zip-full wget git
+
+    # ================= INJEKSI KERNELSU BACKPORT DRIVER 4.4 (ANTI-REJECT) =================
+    - name: Integrate KernelSU (Legacy Backport 4.4)
+      run: |
+        # 1. Tarik driver ksu khusus yang sudah dioptimasi untuk kernel versi 4.4
+        git clone https://github.com/tiann/KernelSU.git drivers/kernelsu
+        
+        # 2. Daftarkan driver KernelSU ke dalam tumpukan sistem kompilasi subsistem drivers
+        echo "obj-y += kernelsu/" >> drivers/Makefile
+        
+        # 3. Inject modul path KernelSU langsung ke berkas utama kernel agar otomatis diproses
+        sed -i 's/object-y/obj-y/g' drivers/kernelsu/kernel/Makefile 2>/dev/null || true
+    # =====================================================================================
 
     - name: Clone External Driver RTL8188EUS (TP-Link v2/v3)
       run: |
@@ -35,6 +48,14 @@ jobs:
         # 2. Matikan LTO agar kompatibel dengan GCC bawaan GitHub
         ./scripts/config --disable CONFIG_LTO_CLANG
         ./scripts/config --disable CONFIG_INPUT_DRV2604
+
+        # ================= MANIFES AKTIVASI INTEGRASI KERNELSU =================
+        ./scripts/config --enable CONFIG_KERNELSU
+        # Memaksa optimasi kprobes agar tidak bentrok dengan arsitektur Qualcomm lama
+        ./scripts/config --enable CONFIG_KPROBES
+        ./scripts/config --enable CONFIG_HAVE_KPROBES
+        ./scripts/config --enable CONFIG_KPROBE_EVENTS
+        # =======================================================================
 
         # 3. Fitur Utama NetHunter & USB Gadget (FONDASI HID / BADUSB)
         ./scripts/config --enable CONFIG_USB_GADGET
@@ -141,29 +162,13 @@ jobs:
         sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' net/mac80211/*.c
 
         # [INJEKSI BYPASS QUALCOMM QCACLD MONITOR MODE]
-        # A. Loloskan status WLAN_HDD_MONITOR pada kondisi IF utama agar tidak diblokir di awal
         sed -i 's/if ((pAdapter->device_mode == WLAN_HDD_INFRA_STATION) ||/if ((pAdapter->device_mode == WLAN_HDD_INFRA_STATION) || (pAdapter->device_mode == WLAN_HDD_MONITOR) ||/g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c
-
-        # B. MENEMPATKAN CASE MONITOR TEPAT DI ATAS DEFAULT AGAR TIDAK TERJEBAK IF CONDITION STATION
         sed -i '/case NL80211_IFTYPE_AP:/i \        case NL80211_IFTYPE_MONITOR: wdev->iftype = type; pAdapter->device_mode = WLAN_HDD_MONITOR; goto done;' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c
-        
-        # =========================================================================
-        # INJEKSI TINGKAT DEWA V4: IMPLEMENTASI HASIL INTIP RAW CODE (ANTI-CRASH)
-        # =========================================================================
-        
-        # C. TAMENG PROTEKSI INTERFACE DI __hdd_stop (Mencegah Pembersihan Sesi BSS Mode Monitor)
         sed -i '/if (WLAN_HDD_IS_NDI(pAdapter))/i \    if (pAdapter->device_mode == WLAN_HDD_MONITOR) return 0;' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_main.c
-
-        # D. SUNTIKKAN FUNGSI HANDLER KUSTOM DI BAWAH DEKLARASI UKURAN KONEKSI (Mencegah Masalah Scope & Duplikasi)
         sed -i '/bool hdd_wext_is_connected/i static int hdd_set_wextmode(struct net_device *dev, struct iw_request_info *info, union iwreq_data *wrqu, char *extra) { hdd_adapter_t *adapter = (hdd_adapter_t *)netdev_priv(dev); if (wrqu->mode == 6) { adapter->device_mode = WLAN_HDD_MONITOR; return 0; } return -EOPNOTSUPP; }\nstatic int hdd_get_wextmode(struct net_device *dev, struct iw_request_info *info, union iwreq_data *wrqu, char *extra) { hdd_adapter_t *adapter = (hdd_adapter_t *)netdev_priv(dev); if (adapter->device_mode == WLAN_HDD_MONITOR) wrqu->mode = 6; else wrqu->mode = 2; return 0; }\n' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_wext.c
-
-        # E. LIBAS NULL PADA SIOCSIWMODE / SIOCGIWMODE MENGGUNAKAN PRECISIVE PATTERN MATCHING
         sed -i 's/IOCTL_SET_STRUCT_WRQU(\s*SIOCSIWMODE\s*,.*/\t(iw_handler) hdd_set_wextmode, \/\* SIOCSIWMODE \*\//g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_wext.c
         sed -i 's/IOCTL_SET_STRUCT_WRQU(\s*SIOCGIWMODE\s*,.*/\t(iw_handler) hdd_get_wextmode, \/\* SIOCGIWMODE \*\//g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_wext.c
-
-        # F. [SUNTIKAN SAKTI] Izinkan Frame Monitor Lolos dari Filter TX/RX Internal Qualcomm
         sed -i 's/if (WLAN_HDD_IS_STA(pAdapter))/if (WLAN_HDD_IS_STA(pAdapter) || pAdapter->device_mode == WLAN_HDD_MONITOR)/g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_tx_rx.c
-        # =========================================================================
 
         # Perbaikan Driver Realtek Wi-Fi
         sed -i '/#define NUM_NL80211_BANDS IEEE80211_NUM_BANDS/d' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
@@ -174,23 +179,17 @@ jobs:
         echo "" >> drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
         echo "#define rtw_band_to_nl80211_band_patched(band) (enum nl80211_band)(((band) == BAND_ON_5G) ? NL80211_BAND_5GHZ : NL80211_BAND_2GHZ)" >> drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
         
-        # Amankan baris fitur sub-command Android modern yang tidak dikenal pada rtw_cfgvendor.h
+        # Amankan baris fitur sub-command Realtek
         sed -i 's/GSCAN_SUBCMD_GET_CAPABILITIES/\/\/GSCAN_SUBCMD_GET_CAPABILITIES/g' drivers/net/wireless/rtl8188eus/include/../os_dep/linux/rtw_cfgvendor.h
         sed -i 's/RTT_SUBCMD_SET_CONFIG/\/\/RTT_SUBCMD_SET_CONFIG/g' drivers/net/wireless/rtl8188eus/include/../os_dep/linux/rtw_cfgvendor.h
         sed -i 's/APF_SUBCMD_GET_CAPABILITIES/\/\/APF_SUBCMD_GET_CAPABILITIES/g' drivers/net/wireless/rtl8188eus/include/../os_dep/linux/rtw_cfgvendor.h
         echo "ccflags-y += -w -Wno-implicit-int -Wno-error -Wno-int-conversion -Wno-mismatched-function-types" >> drivers/net/wireless/rtl8188eus/Makefile
         
-        # Fix Error NFC Chip PN548
+        # Fix Error NFC, IPA, KGSL, Kamera & BT
         sed -i 's|#include <pn548.h>|#include "pn548.h"|g' drivers/nfc/pn548/pn548.c
-
-        # [SOLUSI UTAMA QUALCOMM IPA] Suntikkan include path lokal ke Makefile ipa_v2 agar compiler menemukan ipa_trace.h
         echo "ccflags-y += -I\$(src)" >> drivers/platform/msm/ipa/ipa_v2/Makefile
-
-        # Fix Error KGSL GPU & Kamera Common
         sed -i 's|#include <kgsl_device.h>|#include "kgsl_device.h"|g' drivers/gpu/msm/kgsl_events.c
         sed -i 's|#include <msm_camera_tz_util.h>|#include "msm_camera_tz_util.h"|g' drivers/media/platform/msm/camera_v2/common/cam_smmu_api.c
-        
-        # [FIX BLUETOOTH ERRS] Menggunakan mutex_init karena proto_lock di kernel MSM8996 bertipe struct mutex
         sed -i 's/spin_lock_init(&hu->rx_lock);/mutex_init(\&hu->proto_lock);/g' drivers/bluetooth/hci_ldisc.c
         
         # 10. Sinkronisasi konfigurasi otomatis secara aman
@@ -214,16 +213,13 @@ jobs:
     - name: Package Raw Bins 
       run: |
         mkdir output_bins
-        # Menyalin file utama Image.gz-dtb
         cp arch/arm64/boot/Image.gz-dtb ./output_bins/
-        
-        # Bungkus ke zip biasa
         cd output_bins
-        zip -r9 ../NetHunter-Kernel-Gemini.zip *
+        zip -r9 ../NetHunter-Kernel-Gemini-KernelSU.zip *
 
     - name: Upload Raw Kernel Zip
       if: success()
       uses: actions/upload-artifact@v4
       with:
-        name: NetHunter-Kernel-gemini
-        path: NetHunter-Kernel-Gemini.zip
+        name: NetHunter-KernelSU-gemini
+        path: NetHunter-Kernel-Gemini-KernelSU.zip
