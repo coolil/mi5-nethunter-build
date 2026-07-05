@@ -1,6 +1,5 @@
-name: Build Mi 5 NetHunter Kernel Super + KernelSU - TAHAP 38 FIX ISP HEADER
-
-on:
+name: Build Mi 5 NetHunter Kernel Super - Tahap 39 KSU & WiFi Fix
+on: 
   workflow_dispatch:
 
 jobs:
@@ -9,79 +8,226 @@ jobs:
     env:
       ARCH: arm64
       SUBARCH: arm64
-
     steps:
-    - name: Clone Kernel Source
-      run: |
-        git clone --depth=1 -b twelve-4.4-inline https://github.com/B--B/Gemini-B--B-Kernel.git .
+      - name: Clone Kernel Source
+        run: |
+          git clone --depth=1 -b twelve-4.4-inline https://github.com/B--B/Gemini-B--B-Kernel.git .
 
-    - name: Install Dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev bison flex libelf-dev \
-                                gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi unzip p7zip-full wget git
+      - name: Install Dependencies & Toolchains
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev bison flex libelf-dev
+          sudo apt-get install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi unzip p7zip-full wget
 
-    - name: Integrate KernelSU
-      run: |
-        git clone https://github.com/tiann/KernelSU.git drivers/kernelsu
-        echo 'source "drivers/kernelsu/kernel/Kconfig"' > drivers/kernelsu/Kconfig
-        echo 'obj-y += kernel/' > drivers/kernelsu/Makefile
-        echo "obj-y += kernelsu/" >> drivers/Makefile
+      - name: Clone External Driver RTL8188EUS (TP-Link v2/v3)
+        run: |
+          git clone https://github.com/aircrack-ng/rtl8188eus.git drivers/net/wireless/rtl8188eus
+          echo "obj-\$(CONFIG_RTL8188EU) += rtl8188eus/" >> drivers/net/wireless/Makefile
+          echo 'source "drivers/net/wireless/rtl8188eus/Kconfig"' >> drivers/net/wireless/Kconfig
 
-    - name: Clone External Driver RTL8188EUS
-      run: |
-        git clone https://github.com/aircrack-ng/rtl8188eus.git drivers/net/wireless/rtl8188eus
-        echo "obj-\$(CONFIG_RTL8188EU) += rtl8188eus/" >> drivers/net/wireless/Makefile
-        echo 'source "drivers/net/wireless/rtl8188eus/Kconfig"' >> drivers/net/wireless/Kconfig
+      - name: Setup & Inject KernelSU
+        run: |
+          echo "Menyuntikkan KernelSU ke dalam source code..."
+          curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
 
-    - name: Configure & Inject NetHunter Features
-      run: |
-        make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- gemini_defconfig
-        ./scripts/config --disable CONFIG_LTO_CLANG --disable CONFIG_INPUT_DRV2604
-        ./scripts/config --enable CONFIG_KERNELSU --enable CONFIG_KPROBES --enable CONFIG_KPROBE_EVENTS
-        ./scripts/config --disable CONFIG_BPF_EVENTS --disable CONFIG_BPF_SYSCALL
-        ./scripts/config --enable CONFIG_USB_GADGET --enable CONFIG_USB_CONFIGFS \
-                         --enable CONFIG_USB_CONFIGFS_F_HID --enable CONFIG_USB_CONFIGFS_F_MASS_STORAGE \
-                         --enable CONFIG_PACKET --enable CONFIG_NETFILTER
-        ./scripts/config --enable CONFIG_WIRELESS --enable CONFIG_CFG80211 --enable CONFIG_MAC80211 \
-                         --enable CONFIG_MAC80211_MESH --enable CONFIG_WLAN --disable CONFIG_PRIMA_WLAN_MONITOR \
-                         --enable CONFIG_CNSS --set-val CONFIG_QCA_CLD_WLAN y --set-val CONFIG_WLAN_FEATURE_11W y
+      - name: Configure & Inject NetHunter Features
+        run: |
+          # 1. Muat konfigurasi dasar HP (Xiaomi Mi 5 - gemini)
+          make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- gemini_defconfig
+          
+          # 2. Matikan LTO agar kompatibel dengan GCC bawaan GitHub
+          ./scripts/config --disable CONFIG_LTO_CLANG
+          ./scripts/config --disable CONFIG_INPUT_DRV2604
+          
+          # 3. Fitur Utama NetHunter & USB Gadget (FONDASI HID / BADUSB)
+          ./scripts/config --enable CONFIG_USB_GADGET
+          ./scripts/config --enable CONFIG_USB_CONFIGFS
+          ./scripts/config --enable CONFIG_USB_CONFIGFS_F_HID
+          ./scripts/config --enable CONFIG_USB_CONFIGFS_F_MASS_STORAGE
+          ./scripts/config --set-val CONFIG_USB_F_HID_NUM_COMP_COMMANDS 4
+          ./scripts/config --enable CONFIG_PACKET
+          ./scripts/config --enable CONFIG_NETFILTER
+          
+          # 4. Fondasi Loadable Module Support (Manifes NetHunter)
+          ./scripts/config --enable CONFIG_MODULES
+          ./scripts/config --enable CONFIG_MODULE_UNLOAD
+          ./scripts/config --enable CONFIG_MODULE_FORCE_UNLOAD
+          ./scripts/config --enable CONFIG_MODVERSIONS
+          
+          # 5. Fondasi Wireless Mode Monitor & Injection (FIX WEXT BOM WAKTU + MESH)
+          ./scripts/config --enable CONFIG_USB_NET_RNDIS_WLAN
+          ./scripts/config --enable CONFIG_WIRELESS
+          ./scripts/config --enable CONFIG_CFG80211
+          ./scripts/config --enable CONFIG_CFG80211_WEXT
+          ./scripts/config --enable CONFIG_MAC80211
+          ./scripts/config --enable CONFIG_MAC80211_LEDS
+          ./scripts/config --enable CONFIG_MAC80211_MESH
+          ./scripts/config --enable CONFIG_WLAN
+          
+          # [FONDASI BLUETOOTH UNTUK NETHUNTER CHROOT]
+          ./scripts/config --enable CONFIG_BT
+          ./scripts/config --enable CONFIG_BT_RFCOMM
+          ./scripts/config --enable CONFIG_BT_RFCOMM_TTY
+          ./scripts/config --enable CONFIG_BT_BNEP
+          ./scripts/config --enable CONFIG_BT_BNEP_MC_FILTER
+          ./scripts/config --enable CONFIG_BT_BNEP_PROTO_FILTER
+          ./scripts/config --enable CONFIG_BT_HIDP
+          ./scripts/config --enable CONFIG_BT_HCIUART
+          ./scripts/config --enable CONFIG_BT_HCIUART_H4
+          ./scripts/config --enable CONFIG_BT_HCIUART_IBS
+          ./scripts/config --enable CONFIG_BT_HCIBTUSB
+          ./scripts/config --enable CONFIG_BT_HCIBTUSB_BCM
+          ./scripts/config --enable CONFIG_BT_HCIBTUSB_RTL
+          ./scripts/config --enable CONFIG_BT_HCIBCM203X
+          ./scripts/config --enable CONFIG_BT_HCIBPA10X
+          ./scripts/config --enable CONFIG_BT_HCIBFUSB
+          ./scripts/config --enable CONFIG_BT_HCIVHCI
+          
+          # 6. USB Network Adapters & Modems (Manifes Ethernet + Proxmark3 CDC ACM)
+          ./scripts/config --enable CONFIG_USB_NET_DRIVERS
+          ./scripts/config --enable CONFIG_USB_RTL8150
+          ./scripts/config --enable CONFIG_USB_RTL8152
+          ./scripts/config --enable CONFIG_USB_ACM
+          
+          # 7. Aktifkan Semua Driver Target Wireless Eksternal (Dibuat Built-in '=y')
+          ./scripts/config --enable CONFIG_WLAN_VENDOR_ATH
+          ./scripts/config --set-val CONFIG_ATH9K_HTC y
+          ./scripts/config --set-val CONFIG_CARL9170 y
+          ./scripts/config --set-val CONFIG_ATH6KL y
+          ./scripts/config --set-val CONFIG_ATH6KL_USB y
+          ./scripts/config --enable CONFIG_WLAN_VENDOR_MEDIATEK
+          ./scripts/config --set-val CONFIG_MT7601U y
+          ./scripts/config --enable CONFIG_WLAN_VENDOR_RALINK
+          ./scripts/config --set-val CONFIG_RT2X00 y
+          ./scripts/config --set-val CONFIG_RT2500USB y
+          ./scripts/config --set-val CONFIG_RT73USB y
+          ./scripts/config --set-val CONFIG_RT2800USB y
+          ./scripts/config --set-val CONFIG_RT2800USB_RT33XX y
+          ./scripts/config --set-val CONFIG_RT2800USB_RT35XX y
+          ./scripts/config --set-val CONFIG_RT2800USB_RT3573 y
+          ./scripts/config --set-val CONFIG_RT2800USB_RT53XX y
+          ./scripts/config --set-val CONFIG_RT2800USB_RT55XX y
+          ./scripts/config --set-val CONFIG_RT2800USB_UNKNOWN y
+          ./scripts/config --enable CONFIG_WLAN_VENDOR_REALTEK
+          ./scripts/config --set-val CONFIG_RTL8188EU y
+          ./scripts/config --set-val CONFIG_RTL8187 y
+          ./scripts/config --set-val CONFIG_RTL_CARDS y
+          ./scripts/config --set-val CONFIG_RTL8192CU y
+          ./scripts/config --set-val CONFIG_RTL8XXXU_UNTESTED y
+          ./scripts/config --enable CONFIG_WLAN_VENDOR_ZYDAS
+          ./scripts/config --set-val CONFIG_USB_ZD1201 y
+          ./scripts/config --set-val CONFIG_ZD1211RW y
+          
+          # FIX WIFI INTERNAL MI 5 (Memaksa QCA CLD Built-in, Hapus Prima)
+          ./scripts/config --disable CONFIG_PRIMA_WLAN_MONITOR
+          ./scripts/config --enable CONFIG_CNSS
+          ./scripts/config --set-val CONFIG_QCA_CLD_WLAN y
+          ./scripts/config --set-val CONFIG_WLAN_FEATURE_11W y
+          
+          # --- TAMBAHAN FIX MONITOR MODE INTERNAL ---
+          ./scripts/config --enable CONFIG_NL80211_TESTMODE
+          ./scripts/config --enable CONFIG_CFG80211_INTERNAL_REGDB
+          ./scripts/config --enable CONFIG_QCACLD_WLAN_LFR3
+          
+          # --- TAMBAHAN KONFIGURASI KERNELSU ---
+          ./scripts/config --enable CONFIG_KPROBES
+          ./scripts/config --enable CONFIG_HAVE_KPROBES
+          ./scripts/config --enable CONFIG_KPROBE_EVENTS
+          ./scripts/config --enable CONFIG_OVERLAY_FS
+          
+          # 8. Fondasi Software Defined Radio (SDR) & TV Tuner Sniffer
+          ./scripts/config --enable CONFIG_MEDIA_SUPPORT
+          ./scripts/config --enable CONFIG_MEDIA_DIGITAL_TV_SUPPORT
+          ./scripts/config --enable CONFIG_MEDIA_SDR_SUPPORT
+          ./scripts/config --enable CONFIG_MEDIA_USB_SUPPORT
+          ./scripts/config --set-val CONFIG_USB_AIRSPY y
+          ./scripts/config --set-val CONFIG_USB_HACKRF y
+          ./scripts/config --set-val CONFIG_USB_MSI2500 y
+          ./scripts/config --disable CONFIG_MEDIA_SUBDRV_AUTOSELECT
+          ./scripts/config --set-val CONFIG_DVB_RTL2830 y
+          ./scripts/config --set-val CONFIG_DVB_RTL2832 y
+          ./scripts/config --set-val CONFIG_DVB_RTL2832_SDR y
+          ./scripts/config --set-val CONFIG_DVB_SI2168 y
+          ./scripts/config --set-val CONFIG_DVB_ZD1301_DEMOD y
+          
+          # 9. PERBAIKAN KODE DRIVER (BERDASARKAN HASIL OBSERVASI LOKAL TERMINAL)
+          # Fix Error MAC80211
+          sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' net/mac80211/*.c
+          
+          # [INJEKSI BYPASS QUALCOMM QCACLD MONITOR MODE]
+          sed -i 's/if ((pAdapter->device_mode == WLAN_HDD_INFRA_STATION) ||/if ((pAdapter->device_mode == WLAN_HDD_INFRA_STATION) || (pAdapter->device_mode == WLAN_HDD_MONITOR) ||/g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c
+          sed -i '/case NL80211_IFTYPE_AP:/i \ case NL80211_IFTYPE_MONITOR: wdev->iftype = type; pAdapter->device_mode = WLAN_HDD_MONITOR; goto done;' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c
+          
+          # C. TAMENG PROTEKSI INTERFACE DI __hdd_stop
+          sed -i '/if (WLAN_HDD_IS_NDI(pAdapter))/i \ if (pAdapter->device_mode == WLAN_HDD_MONITOR) return 0;' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_main.c
+          
+          # D. SUNTIKKAN FUNGSI HANDLER KUSTOM
+          sed -i '/bool hdd_wext_is_connected/i static int hdd_set_wextmode(struct net_device *dev, struct iw_request_info *info, union iwreq_data *wrqu, char *extra) { hdd_adapter_t *adapter = (hdd_adapter_t *)netdev_priv(dev); if (wrqu->mode == 6) { adapter->device_mode = WLAN_HDD_MONITOR; return 0; } return -EOPNOTSUPP; }\nstatic int hdd_get_wextmode(struct net_device *dev, struct iw_request_info *info, union iwreq_data *wrqu, char *extra) { hdd_adapter_t *adapter = (hdd_adapter_t *)netdev_priv(dev); if (adapter->device_mode == WLAN_HDD_MONITOR) wrqu->mode = 6; else wrqu->mode = 2; return 0; }\n' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_wext.c
+          
+          # E. LIBAS NULL PADA SIOCSIWMODE / SIOCGIWMODE
+          sed -i 's/IOCTL_SET_STRUCT_WRQU(\s*SIOCSIWMODE\s*,.*/\t(iw_handler) hdd_set_wextmode, \/\* SIOCSIWMODE \*\//g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_wext.c
+          sed -i 's/IOCTL_SET_STRUCT_WRQU(\s*SIOCGIWMODE\s*,.*/\t(iw_handler) hdd_get_wextmode, \/\* SIOCGIWMODE \*\//g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_wext.c
+          
+          # F. [SUNTIKAN SAKTI] Izinkan Frame Monitor Lolos
+          sed -i 's/if (WLAN_HDD_IS_STA(pAdapter))/if (WLAN_HDD_IS_STA(pAdapter) || pAdapter->device_mode == WLAN_HDD_MONITOR)/g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_tx_rx.c
+          
+          # Perbaikan Driver Realtek Wi-Fi
+          sed -i '/#define NUM_NL80211_BANDS IEEE80211_NUM_BANDS/d' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
+          sed -i 's/#define NL80211_BAND_2GHZ IEEE80211_BAND_2GHZ/#define IEEE80211_BAND_2GHZ NL80211_BAND_2GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
+          sed -i 's/#define NL80211_BAND_5GHZ IEEE80211_BAND_5GHZ/#define IEEE80211_BAND_5GHZ NL80211_BAND_5GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
+          sed -i 's/rtw_band_to_nl80211_band(/rtw_band_to_nl80211_band_patched(/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.c
+          sed -i 's/NUM_NL80211_BANDS/NL80211_BAND_2GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.c
+          echo "" >> drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
+          echo "#define rtw_band_to_nl80211_band_patched(band) (enum nl80211_band)(((band) == BAND_ON_5G) ? NL80211_BAND_5GHZ : NL80211_BAND_2GHZ)" >> drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
+          
+          # Amankan baris fitur sub-command Android modern
+          sed -i 's/GSCAN_SUBCMD_GET_CAPABILITIES/\/\/GSCAN_SUBCMD_GET_CAPABILITIES/g' drivers/net/wireless/rtl8188eus/include/../os_dep/linux/rtw_cfgvendor.h
+          sed -i 's/RTT_SUBCMD_SET_CONFIG/\/\/RTT_SUBCMD_SET_CONFIG/g' drivers/net/wireless/rtl8188eus/include/../os_dep/linux/rtw_cfgvendor.h
+          sed -i 's/APF_SUBCMD_GET_CAPABILITIES/\/\/APF_SUBCMD_GET_CAPABILITIES/g' drivers/net/wireless/rtl8188eus/include/../os_dep/linux/rtw_cfgvendor.h
+          echo "ccflags-y += -w -Wno-implicit-int -Wno-error -Wno-int-conversion -Wno-mismatched-function-types" >> drivers/net/wireless/rtl8188eus/Makefile
+          
+          # Fix Error NFC Chip PN548
+          sed -i 's|#include <pn548.h>|#include "pn548.h"|g' drivers/nfc/pn548/pn548.c
+          
+          # [SOLUSI UTAMA QUALCOMM IPA]
+          echo "ccflags-y += -I\$(src)" >> drivers/platform/msm/ipa/ipa_v2/Makefile
+          
+          # Fix Error KGSL GPU & Kamera Common
+          sed -i 's|#include <kgsl_device.h>|#include "kgsl_device.h"|g' drivers/gpu/msm/kgsl_events.c
+          sed -i 's|#include <msm_camera_tz_util.h>|#include "msm_camera_tz_util.h"|g' drivers/media/platform/msm/camera_v2/common/cam_smmu_api.c
+          
+          # [FIX BLUETOOTH ERRS]
+          sed -i 's/spin_lock_init(&hu->rx_lock);/mutex_init(\&hu->proto_lock);/g' drivers/bluetooth/hci_ldisc.c
+          
+          # 10. Sinkronisasi konfigurasi otomatis secara aman
+          make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- olddefconfig
 
-        # Patching Driver & Kode
-        sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' net/mac80211/*.c
-        
-        # Bypass Qualcomm Monitor Mode
-        sed -i 's/if ((pAdapter->device_mode == WLAN_HDD_INFRA_STATION) ||/if ((pAdapter->device_mode == WLAN_HDD_INFRA_STATION) || (pAdapter->device_mode == WLAN_HDD_MONITOR) ||/g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c
-        sed -i '/case NL80211_IFTYPE_AP:/i \        case NL80211_IFTYPE_MONITOR: wdev->iftype = type; pAdapter->device_mode = WLAN_HDD_MONITOR; goto done;' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c
-        sed -i '/bool hdd_wext_is_connected/i static int hdd_set_wextmode(struct net_device *dev, struct iw_request_info *info, union iwreq_data *wrqu, char *extra) { hdd_adapter_t *adapter = (hdd_adapter_t *)netdev_priv(dev); if (wrqu->mode == 6) { adapter->device_mode = WLAN_HDD_MONITOR; return 0; } return -EOPNOTSUPP; }\nstatic int hdd_get_wextmode(struct net_device *dev, struct iw_request_info *info, union iwreq_data *wrqu, char *extra) { hdd_adapter_t *adapter = (hdd_adapter_t *)netdev_priv(dev); if (adapter->device_mode == WLAN_HDD_MONITOR) wrqu->mode = 6; else wrqu->mode = 2; return 0; }\n' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_wext.c
-        sed -i 's/if (WLAN_HDD_IS_STA(pAdapter))/if (WLAN_HDD_IS_STA(pAdapter) || pAdapter->device_mode == WLAN_HDD_MONITOR)/g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_tx_rx.c
+      - name: Compile Kernel (Strict Mode)
+        run: |
+          export KCFLAGS="-I$GITHUB_WORKSPACE/drivers/gpu/msm \
+            -I$GITHUB_WORKSPACE/drivers/soc/qcom \
+            -I$GITHUB_WORKSPACE/sound/soc/msm \
+            -I$GITHUB_WORKSPACE/sound/soc/msm/qdsp6v2 \
+            -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/isp \
+            -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/sensor \
+            -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/sensor/io \
+            -I$GITHUB_WORKSPACE/drivers/misc \
+            -I$GITHUB_WORKSPACE/drivers/net/ethernet/msm \
+            -I."
+          make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="$KCFLAGS" -j2
 
-        # Patch Realtek
-        sed -i '/#define NUM_NL80211_BANDS IEEE80211_NUM_BANDS/d' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
-        echo "#define rtw_band_to_nl80211_band_patched(band) (enum nl80211_band)(((band) == BAND_ON_5G) ? NL80211_BAND_5GHZ : NL80211_BAND_2GHZ)" >> drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
+      - name: Package Raw Bins (No AnyKernel3)
+        run: |
+          mkdir output_bins
+          # Menyalin file utama Image.gz-dtb
+          cp arch/arm64/boot/Image.gz-dtb ./output_bins/
+          # Bungkus ke zip biasa
+          cd output_bins
+          zip -r9 ../NetHunter-Kernel-Gemini-Raw-Files.zip *
 
-        # Fix Error Camera/ISP/NFC
-        sed -i 's|#include <pn548.h>|#include "pn548.h"|g' drivers/nfc/pn548/pn548.c
-        sed -i 's|#include <kgsl_device.h>|#include "kgsl_device.h"|g' drivers/gpu/msm/kgsl_events.c
-        sed -i 's|#include <msm_camera_tz_util.h>|#include "msm_camera_tz_util.h"|g' drivers/media/platform/msm/camera_v2/common/cam_smmu_api.c
-        sed -i 's/spin_lock_init(&hu->rx_lock);/mutex_init(\&hu->proto_lock);/g' drivers/bluetooth/hci_ldisc.c
-        
-        # [SOLUSI ISP HEADER]
-        ln -s $GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/isp/msm_isp.h $GITHUB_WORKSPACE/include/linux/msm_isp.h || true
-        
-        make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- olddefconfig
-        make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- prepare
-
-    - name: Compile Kernel (Strict Mode)
-      run: |
-        export KCFLAGS="-I$GITHUB_WORKSPACE/drivers/gpu/msm -I$GITHUB_WORKSPACE/drivers/soc/qcom \
-                        -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2 \
-                        -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/common \
-                        -include linux/err.h -w -Wno-error -Wno-error=incompatible-pointer-types -I."
-        make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="$KCFLAGS" -j4
-
-    - name: Package & Upload
-      run: |
-        mkdir output_bins
-        cp arch/arm64/boot/Image.gz-dtb ./output_bins/ || cp arch/arm64/boot/Image.gz ./output_bins/
-        cd output_bins && zip -r9 ../NetHunter-Kernel-Gemini-KernelSU.zip *
+      - name: Upload Raw Kernel Zip
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: NetHunter-Kernel-Mi5-Raw-Files
+          path: NetHunter-Kernel-Gemini-Raw-Files.zip
