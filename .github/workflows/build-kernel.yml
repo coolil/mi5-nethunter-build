@@ -157,10 +157,6 @@ jobs:
         ./scripts/config --set-val CONFIG_DVB_RTL2832_SDR y
         ./scripts/config --set-val CONFIG_DVB_SI2168 y
         ./scripts/config --set-val CONFIG_DVB_ZD1301_DEMOD y
-
-        # ================= KUNCI UTAMA: PENJINAK SUB-SISTEM TRACE BPF =================
-        ./scripts/config --disable CONFIG_BPF_EVENTS
-        # ==============================================================================
         
         # 9. PERBAIKAN KODE DRIVER (BERDASARKAN HASIL OBSERVASI LOKAL TERMINAL)
         # Fix Error MAC80211
@@ -200,6 +196,11 @@ jobs:
         sed -i 's|#include <kgsl_device.h>|#include "kgsl_device.h"|g' drivers/gpu/msm/kgsl_events.c
         sed -i 's|#include <msm_camera_tz_util.h>|#include "msm_camera_tz_util.h"|g' drivers/media/platform/msm/camera_v2/common/cam_smmu_api.c
         sed -i 's/spin_lock_init(&hu->rx_lock);/mutex_init(\&hu->proto_lock);/g' drivers/bluetooth/hci_ldisc.c
+
+        # ================= BYPASS TOTAL MAKEFILE BPF_TRACE (HARD FIX) =================
+        # [TERUBAH DI SINI] Memaksa Makefile merubah bpf_trace.o menjadi obj-n agar dilewati total
+        sed -i 's/obj-$(CONFIG_BPF_EVENTS) += bpf_trace.o/obj-n += bpf_trace.o/g' kernel/trace/Makefile
+        # ==============================================================================
         
         # 10. Sinkronisasi konfigurasi otomatis secara aman & Bangun Header Arsitektur
         make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- olddefconfig
