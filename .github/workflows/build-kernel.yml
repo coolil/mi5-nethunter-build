@@ -1,4 +1,4 @@
-name: Build Mi 5 NetHunter Kernel Super + KernelSU - TAHAP 37 LENGKAP
+name: Build Mi 5 NetHunter Kernel Super + KernelSU - TAHAP 38 FIX ISP HEADER
 
 on:
   workflow_dispatch:
@@ -47,7 +47,7 @@ jobs:
                          --enable CONFIG_MAC80211_MESH --enable CONFIG_WLAN --disable CONFIG_PRIMA_WLAN_MONITOR \
                          --enable CONFIG_CNSS --set-val CONFIG_QCA_CLD_WLAN y --set-val CONFIG_WLAN_FEATURE_11W y
 
-        # Patching Driver & Kode (RESTORED FULL)
+        # Patching Driver & Kode
         sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' net/mac80211/*.c
         
         # Bypass Qualcomm Monitor Mode
@@ -60,11 +60,14 @@ jobs:
         sed -i '/#define NUM_NL80211_BANDS IEEE80211_NUM_BANDS/d' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
         echo "#define rtw_band_to_nl80211_band_patched(band) (enum nl80211_band)(((band) == BAND_ON_5G) ? NL80211_BAND_5GHZ : NL80211_BAND_2GHZ)" >> drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
 
-        # Fix lainnya
+        # Fix Error Camera/ISP/NFC
         sed -i 's|#include <pn548.h>|#include "pn548.h"|g' drivers/nfc/pn548/pn548.c
         sed -i 's|#include <kgsl_device.h>|#include "kgsl_device.h"|g' drivers/gpu/msm/kgsl_events.c
         sed -i 's|#include <msm_camera_tz_util.h>|#include "msm_camera_tz_util.h"|g' drivers/media/platform/msm/camera_v2/common/cam_smmu_api.c
         sed -i 's/spin_lock_init(&hu->rx_lock);/mutex_init(\&hu->proto_lock);/g' drivers/bluetooth/hci_ldisc.c
+        
+        # [SOLUSI ISP HEADER]
+        ln -s $GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/isp/msm_isp.h $GITHUB_WORKSPACE/include/linux/msm_isp.h || true
         
         make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- olddefconfig
         make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- prepare
