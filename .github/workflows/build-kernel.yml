@@ -186,6 +186,10 @@ jobs:
         sed -i 's/APF_SUBCMD_GET_CAPABILITIES/\/\/APF_SUBCMD_GET_CAPABILITIES/g' drivers/net/wireless/rtl8188eus/include/../os_dep/linux/rtw_cfgvendor.h
         echo "ccflags-y += -w -Wno-implicit-int -Wno-error -Wno-int-conversion -Wno-mismatched-function-types" >> drivers/net/wireless/rtl8188eus/Makefile
         
+        # ================= INJEKSI PENJINAK UTAMAKAN WARNING DRIVER INTERNAL QUALCOMM =================
+        echo "ccflags-y += -w -Wno-error -Wno-enum-int-mismatch -Wno-array-parameter -Wno-maybe-uninitialized -Wno-dangling-pointer" >> drivers/staging/qcacld-2.0/Makefile
+        # ==============================================================================================
+
         # Fix Error NFC, IPA, KGSL, Kamera & BT
         sed -i 's|#include <pn548.h>|#include "pn548.h"|g' drivers/nfc/pn548/pn548.c
         echo "ccflags-y += -I\$(src)" >> drivers/platform/msm/ipa/ipa_v2/Makefile
@@ -207,6 +211,7 @@ jobs:
                         -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/sensor/io \
                         -I$GITHUB_WORKSPACE/drivers/misc \
                         -I$GITHUB_WORKSPACE/drivers/net/ethernet/msm \
+                        -w -Wno-error \
                         -I."
                         
         make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="$KCFLAGS" -j4
