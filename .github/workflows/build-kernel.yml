@@ -205,6 +205,9 @@ jobs:
           ./scripts/config --disable CONFIG_BPF_JIT
           ./scripts/config --disable CONFIG_UPROBE_EVENTS
           
+          # --- FIX MISSING ERR_PTR DI BPF.H (Efek Samping BPF Disabled) ---
+          sed -i '1s/^/#include <linux\/err.h>\n/' include/linux/bpf.h
+          
           # 10. Sinkronisasi konfigurasi otomatis secara aman
           make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- olddefconfig
 
