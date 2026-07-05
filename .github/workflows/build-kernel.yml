@@ -154,12 +154,12 @@ jobs:
         # C. TAMENG PROTEKSI INTERFACE DI __hdd_stop (Mencegah Pembersihan Sesi BSS Mode Monitor)
         sed -i '/if (WLAN_HDD_IS_NDI(pAdapter))/i \    if (pAdapter->device_mode == WLAN_HDD_MONITOR) return 0;' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_main.c
 
-        # D. SUNTIKKAN FUNGSI HANDLER KUSTOM SECARA INLINE DI ATAS ARRAY we_handler PADA wlan_hdd_wext.c
-        sed -i '/static const iw_handler/i static int hdd_set_wextmode(struct net_device *dev, struct iw_request_info *info, union iwreq_data *wrqu, char *extra) { hdd_adapter_t *adapter = (hdd_adapter_t *)netdev_priv(dev); if (wrqu->mode == 6) { adapter->device_mode = WLAN_HDD_MONITOR; return 0; } return -EOPNOTSUPP; }\nstatic int hdd_get_wextmode(struct net_device *dev, struct iw_request_info *info, union iwreq_data *wrqu, char *extra) { hdd_adapter_t *adapter = (hdd_adapter_t *)netdev_priv(dev); if (adapter->device_mode == WLAN_HDD_MONITOR) wrqu->mode = 6; else wrqu->mode = 2; return 0; }\n' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_wext.c
+        # D. SUNTIKKAN FUNGSI HANDLER KUSTOM DI BARIS PERTAMA BERKAS (SOLUSI ANTI-DUPLIKASI)
+        sed -i '1i static int hdd_set_wextmode(struct net_device *dev, struct iw_request_info *info, union iwreq_data *wrqu, char *extra) { hdd_adapter_t *adapter = (hdd_adapter_t *)netdev_priv(dev); if (wrqu->mode == 6) { adapter->device_mode = WLAN_HDD_MONITOR; return 0; } return -EOPNOTSUPP; }\nstatic int hdd_get_wextmode(struct net_device *dev, struct iw_request_info *info, union iwreq_data *wrqu, char *extra) { hdd_adapter_t *adapter = (hdd_adapter_t *)netdev_priv(dev); if (adapter->device_mode == WLAN_HDD_MONITOR) wrqu->mode = 6; else wrqu->mode = 2; return 0; }' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_wext.c
 
-        # E. LIBAS NULL PADA SIOCSIWMODE / SIOCGIWMODE MENGGUNAKAN POSIX REGEX YANG DISEDERHANAKAN
-        sed -i 's/.*SIOCSIWMODE.*/\t(iw_handler) hdd_set_wextmode, \/\* SIOCSIWMODE \*\//g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_wext.c
-        sed -i 's/.*SIOCGIWMODE.*/\t(iw_handler) hdd_get_wextmode, \/\* SIOCGIWMODE \*\//g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_wext.c
+        # E. LIBAS NULL PADA SIOCSIWMODE / SIOCGIWMODE MENGGUNAKAN PRECISIVE PATTERN MATCHING
+        sed -i 's/IOCTL_SET_STRUCT_WRQU(\s*SIOCSIWMODE\s*,.*/\t(iw_handler) hdd_set_wextmode, \/\* SIOCSIWMODE \*\//g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_wext.c
+        sed -i 's/IOCTL_SET_STRUCT_WRQU(\s*SIOCGIWMODE\s*,.*/\t(iw_handler) hdd_get_wextmode, \/\* SIOCGIWMODE \*\//g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_wext.c
 
         # F. [SUNTIKAN SAKTI] Izinkan Frame Monitor Lolos dari Filter TX/RX Internal Qualcomm
         sed -i 's/if (WLAN_HDD_IS_STA(pAdapter))/if (WLAN_HDD_IS_STA(pAdapter) || pAdapter->device_mode == WLAN_HDD_MONITOR)/g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_tx_rx.c
