@@ -1,4 +1,4 @@
-name: Build Mi 5 NetHunter Kernel Super + KernelSU - Professional Verified
+name: Build Mi 5 NetHunter Kernel Super + KernelSU - Fix Camera Include
 
 on:
   workflow_dispatch:
@@ -36,20 +36,20 @@ jobs:
 
     - name: Configure & Inject NetHunter Features
       run: |
-        # 1. Inisialisasi Konfigurasi Dasar
+        # 1. Muat defconfig dasar gemini
         make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- gemini_defconfig
         
-        # 2. Penyesuaian Kompilator
+        # 2. Nonaktifkan LTO
         ./scripts/config --disable CONFIG_LTO_CLANG
         ./scripts/config --disable CONFIG_INPUT_DRV2604
 
-        # 3. Manifes KernelSU & Kprobes
+        # 3. Aktivasi KernelSU & Kprobes
         ./scripts/config --enable CONFIG_KERNELSU
         ./scripts/config --enable CONFIG_KPROBES
         ./scripts/config --enable CONFIG_HAVE_KPROBES
         ./scripts/config --enable CONFIG_KPROBE_EVENTS
 
-        # 4. Fitur NetHunter, HID, & USB Gadget Framework
+        # 4. Fitur Utama NetHunter & USB Gadget
         ./scripts/config --enable CONFIG_USB_GADGET
         ./scripts/config --enable CONFIG_USB_CONFIGFS
         ./scripts/config --enable CONFIG_USB_CONFIGFS_F_HID
@@ -85,7 +85,7 @@ jobs:
         ./scripts/config --enable CONFIG_BT_HCIUART_IBS
         ./scripts/config --enable CONFIG_BT_HCIBTUSB
         
-        # 8. Driver Wi-Fi Eksternal (Mengubah target menjadi built-in)
+        # 8. Driver Wi-Fi Eksternal (Built-in)
         ./scripts/config --enable CONFIG_WLAN_VENDOR_ATH
         ./scripts/config --set-val CONFIG_ATH9K_HTC y
         ./scripts/config --set-val CONFIG_CARL9170 y
@@ -109,8 +109,7 @@ jobs:
 
     - name: Apply Professional Source Patches
       run: |
-        # PATCH 1: Perbaikan Masalah BPF Trace secara Absolut via Pembersihan Makro C
-        # Menambahkan definisi makro penjinak sebelum file bpf_trace.c dievaluasi oleh gcc
+        # PATCH 1: Perbaikan Masalah BPF Trace via Pembersihan Makro C
         sed -i '1s/^/#define CONFIG_BPF_PERF_EVENT_READ_BUT_FIXED\n/' kernel/trace/bpf_trace.c
         
         # PATCH 2: Stabilisasi Eksternal Driver qcacld-2.0 Monitor Mode Bypass
@@ -123,6 +122,9 @@ jobs:
         # PATCH 4: Perbaikan Tipe Bluetooth Driver Ldisc Kuno
         sed -i 's/spin_lock_init(&hu->rx_lock);/mutex_init(\&hu->proto_lock);/g' drivers/bluetooth/hci_ldisc.c
 
+        # PATCH 5: Koreksi Sintaks NFC Driver
+        sed -i 's|#include <pn548.h>|#include "pn548.h"|g' drivers/nfc/pn548/pn548.c
+
     - name: Synchronize Configuration
       run: |
         make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- olddefconfig
@@ -130,10 +132,12 @@ jobs:
 
     - name: Compile Kernel
       run: |
-        # Definisi KCFLAGS yang bersih tanpa duplikasi direktori root '.'
+        # Penambahan direktori camera_v2/common ke dalam KCFLAGS agar msm_camera_tz_util.h terbaca universal
         export KCFLAGS="-I$GITHUB_WORKSPACE/drivers/gpu/msm \
                         -I$GITHUB_WORKSPACE/drivers/soc/qcom \
                         -I$GITHUB_WORKSPACE/sound/soc/msm \
+                        -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2 \
+                        -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/common \
                         -w -Wno-error"
                         
         make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="$KCFLAGS" -j$(nproc)
