@@ -1,4 +1,4 @@
-name: Build Mi 5 NetHunter Kernel Super - Tahap 39 KSU & WiFi Fix
+name: Build Mi 5 NetHunter Kernel Super - Tahap 40 KSU & Optimasi
 on: 
   workflow_dispatch:
 
@@ -29,6 +29,11 @@ jobs:
         run: |
           echo "Menyuntikkan KernelSU ke dalam source code..."
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
+          
+          # --- FIX ERROR COMPILE KERNELSU DI 4.4 ---
+          echo "Menerapkan patch kompatibilitas KernelSU untuk arsitektur 4.4..."
+          sed -i '1i typedef void* syscall_fn_t;' drivers/kernelsu/hook/syscall_hook.h
+          sed -i '1i #ifndef MODULE_IMPORT_NS\n#define MODULE_IMPORT_NS(ns)\n#endif' drivers/kernelsu/core/init.c
 
       - name: Configure & Inject NetHunter Features
         run: |
@@ -150,6 +155,18 @@ jobs:
           ./scripts/config --set-val CONFIG_DVB_SI2168 y
           ./scripts/config --set-val CONFIG_DVB_ZD1301_DEMOD y
           
+          # =======================================================
+          # --- BONUS: OPTIMASI PERFORMA & RAM MI 5 (SD820) ---
+          # =======================================================
+          ./scripts/config --enable CONFIG_ZSMALLOC
+          ./scripts/config --enable CONFIG_ZRAM
+          ./scripts/config --enable CONFIG_CRYPTO_LZ4
+          ./scripts/config --enable CONFIG_ZRAM_LZ4_COMPRESS
+          ./scripts/config --enable CONFIG_TCP_CONG_BBR
+          ./scripts/config --set-str CONFIG_DEFAULT_TCP_CONG "bbr"
+          ./scripts/config --enable CONFIG_IOSCHED_BFQ
+          ./scripts/config --enable CONFIG_CGROUP_BFQIO
+          
           # 9. PERBAIKAN KODE DRIVER (BERDASARKAN HASIL OBSERVASI LOKAL TERMINAL)
           # Fix Error MAC80211
           sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' net/mac80211/*.c
@@ -205,8 +222,13 @@ jobs:
           ./scripts/config --disable CONFIG_BPF_JIT
           ./scripts/config --disable CONFIG_UPROBE_EVENTS
           
-          # --- FIX MISSING ERR_PTR DI BPF.H (Efek Samping BPF Disabled) ---
+          # --- FIX MISSING ERR_PTR DI BPF.H ---
           sed -i '1s/^/#include <linux\/err.h>\n/' include/linux/bpf.h
+          
+          # --- BONGKAR WERROR (ANTI-CRASH WARNING GCC MODERN) ---
+          # Mematikan aturan ketat di seluruh kernel agar peringatan tidak diubah menjadi error gagal compile
+          find . -type f -name "Makefile" -exec sed -i 's/-Werror//g' {} +
+          ./scripts/config --disable CONFIG_WERROR
           
           # 10. Sinkronisasi konfigurasi otomatis secara aman
           make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- olddefconfig
