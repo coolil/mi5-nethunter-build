@@ -24,14 +24,9 @@ jobs:
     # ================= INJEKSI KERNELSU BACKPORT DRIVER 4.4 (FIX FOLDER PATH) =================
     - name: Integrate KernelSU (Legacy Backport 4.4)
       run: |
-        # 1. Tarik driver ksu khusus dari repositori resmi
         git clone https://github.com/tiann/KernelSU.git drivers/kernelsu
-        
-        # 2. Buat berkas jembatan Kconfig & Makefile agar sistem build mendeteksi sub-folder kernel/ bawaan KSU
         echo 'source "drivers/kernelsu/kernel/Kconfig"' > drivers/kernelsu/Kconfig
         echo 'obj-y += kernel/' > drivers/kernelsu/Makefile
-        
-        # 3. Daftarkan folder induk KernelSU ke dalam tumpukan sistem kompilasi drivers utama
         echo "obj-y += kernelsu/" >> drivers/Makefile
     # =====================================================================================
 
@@ -52,11 +47,16 @@ jobs:
 
         # ================= MANIFES AKTIVASI INTEGRASI KERNELSU =================
         ./scripts/config --enable CONFIG_KERNELSU
-        # Memaksa optimasi kprobes agar tidak bentrok dengan arsitektur Qualcomm lama
         ./scripts/config --enable CONFIG_KPROBES
         ./scripts/config --enable CONFIG_HAVE_KPROBES
         ./scripts/config --enable CONFIG_KPROBE_EVENTS
         # =======================================================================
+
+        # ================= FIX CONFLICT BPF LINKER ERRORS (SOLUSI TAHAP 35) =================
+        # Mematikan event tracing BPF yang menyebabkan undefined reference di vmlinux
+        ./scripts/config --disable CONFIG_BPF_EVENTS
+        ./scripts/config --disable CONFIG_BPF_SYSCALL
+        # ===================================================================================
 
         # 3. Fitur Utama NetHunter & USB Gadget (FONDASI HID / BADUSB)
         ./scripts/config --enable CONFIG_USB_GADGET
@@ -137,11 +137,12 @@ jobs:
         ./scripts/config --set-val CONFIG_USB_ZD1201 y
         ./scripts/config --set-val CONFIG_ZD1211RW y
         
-        # FIX WIFI INTERNAL MI 5 (Memaksa QCA CLD Built-in, Hapus Prima)
+        # ================= FIX WIFI INTERNAL MI 5 (MONITOR MODE FULFILLMENT) =================
         ./scripts/config --disable CONFIG_PRIMA_WLAN_MONITOR
         ./scripts/config --enable CONFIG_CNSS
         ./scripts/config --set-val CONFIG_QCA_CLD_WLAN y
         ./scripts/config --set-val CONFIG_WLAN_FEATURE_11W y
+        # =====================================================================================
 
         # 8. Fondasi Software Defined Radio (SDR) & TV Tuner Sniffer
         ./scripts/config --enable CONFIG_MEDIA_SUPPORT
@@ -158,11 +159,11 @@ jobs:
         ./scripts/config --set-val CONFIG_DVB_SI2168 y
         ./scripts/config --set-val CONFIG_DVB_ZD1301_DEMOD y
         
-        # 9. PERBAIKAN KODE DRIVER (BERDASARKAN HASIL OBSERVASI LOKAL TERMINAL)
+        # 9. PERBAIKAN KODE DRIVER (MENGUNCI SEMUA PATCH LAMA YANG SUDAH BERHASIL)
         # Fix Error MAC80211
         sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' net/mac80211/*.c
 
-        # [INJEKSI BYPASS QUALCOMM QCACLD MONITOR MODE]
+        # [INJEKSI BYPASS QUALCOMM QCACLD MONITOR MODE UNTUK WIFI INTERNAL]
         sed -i 's/if ((pAdapter->device_mode == WLAN_HDD_INFRA_STATION) ||/if ((pAdapter->device_mode == WLAN_HDD_INFRA_STATION) || (pAdapter->device_mode == WLAN_HDD_MONITOR) ||/g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c
         sed -i '/case NL80211_IFTYPE_AP:/i \        case NL80211_IFTYPE_MONITOR: wdev->iftype = type; pAdapter->device_mode = WLAN_HDD_MONITOR; goto done;' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c
         sed -i '/if (WLAN_HDD_IS_NDI(pAdapter))/i \    if (pAdapter->device_mode == WLAN_HDD_MONITOR) return 0;' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_main.c
@@ -186,19 +187,20 @@ jobs:
         sed -i 's/APF_SUBCMD_GET_CAPABILITIES/\/\/APF_SUBCMD_GET_CAPABILITIES/g' drivers/net/wireless/rtl8188eus/include/../os_dep/linux/rtw_cfgvendor.h
         echo "ccflags-y += -w -Wno-implicit-int -Wno-error -Wno-int-conversion -Wno-mismatched-function-types" >> drivers/net/wireless/rtl8188eus/Makefile
         
-        # ================= INJEKSI PENJINAK UTAMAKAN WARNING DRIVER INTERNAL QUALCOMM =================
+        # Penjinak warning driver internal Qualcomm
         echo "ccflags-y += -w -Wno-error -Wno-enum-int-mismatch -Wno-array-parameter -Wno-maybe-uninitialized -Wno-dangling-pointer" >> drivers/staging/qcacld-2.0/Makefile
-        # ==============================================================================================
 
-        # Fix Error NFC, IPA, KGSL, & BT (Sed perusak kamera asli dipangkas dari sini)
+        # Fix Error NFC, IPA, KGSL, Kamera & BT
         sed -i 's|#include <pn548.h>|#include "pn548.h"|g' drivers/nfc/pn548/pn548.c
         echo "ccflags-y += -I\$(src)" >> drivers/platform/msm/ipa/ipa_v2/Makefile
         sed -i 's|#include <kgsl_device.h>|#include "kgsl_device.h"|g' drivers/gpu/msm/kgsl_events.c
+        sed -i 's|#include <msm_camera_tz_util.h>|#include "msm_camera_tz_util.h"|g' drivers/media/platform/msm/camera_v2/common/cam_smmu_api.c
         sed -i 's/spin_lock_init(&hu->rx_lock);/mutex_init(\&hu->proto_lock);/g' drivers/bluetooth/hci_ldisc.c
 
-        # ================= BYPASS TOTAL MAKEFILE BPF_TRACE (HARD FIX) =================
-        sed -i 's/obj-$(CONFIG_BPF_EVENTS) += bpf_trace.o/obj-n += bpf_trace.o/g' kernel/trace/Makefile
-        # ==============================================================================
+        # ================= RESTORASI MAKEFILE TRACE =================
+        # Kita kembalikan ini seperti semula agar pelacakan kprobes bawaan KernelSU tidak rusak
+        # Masalah diatasi menggunakan penonaktifan CONFIG_BPF_EVENTS di atas
+        # ============================================================
         
         # 10. Sinkronisasi konfigurasi otomatis secara aman & Bangun Header Arsitektur
         make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- olddefconfig
@@ -206,7 +208,6 @@ jobs:
 
     - name: Compile Kernel (Strict Mode)
       run: |
-        # Jalur msm/camera_v2 murni diletakkan di KCFLAGS global agar include <...> terbaca otomatis oleh compiler
         export KCFLAGS="-I$GITHUB_WORKSPACE/drivers/gpu/msm \
                         -I$GITHUB_WORKSPACE/drivers/soc/qcom \
                         -I$GITHUB_WORKSPACE/sound/soc/msm \
