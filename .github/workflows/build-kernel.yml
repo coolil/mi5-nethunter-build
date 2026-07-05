@@ -199,6 +199,12 @@ jobs:
           # [FIX BLUETOOTH ERRS]
           sed -i 's/spin_lock_init(&hu->rx_lock);/mutex_init(\&hu->proto_lock);/g' drivers/bluetooth/hci_ldisc.c
           
+          # --- FIX ERROR COMPILE BPF TRACE KERNEL 4.4 ---
+          ./scripts/config --disable CONFIG_BPF_SYSCALL
+          ./scripts/config --disable CONFIG_BPF_EVENTS
+          ./scripts/config --disable CONFIG_BPF_JIT
+          ./scripts/config --disable CONFIG_UPROBE_EVENTS
+          
           # 10. Sinkronisasi konfigurasi otomatis secara aman
           make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- olddefconfig
 
