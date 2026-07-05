@@ -1,4 +1,4 @@
-name: Build Mi 5 NetHunter Kernel Super - Tahap 40 KSU & Optimasi
+name: Build Mi 5 NetHunter Kernel Super - Tahap 41 KSU & Optimasi (Safe Werror)
 on: 
   workflow_dispatch:
 
@@ -222,19 +222,15 @@ jobs:
           ./scripts/config --disable CONFIG_BPF_JIT
           ./scripts/config --disable CONFIG_UPROBE_EVENTS
           
-          # --- FIX MISSING ERR_PTR DI BPF.H ---
+          # --- FIX MISSING ERR_PTR DI BPF.H (Efek Samping BPF Disabled) ---
           sed -i '1s/^/#include <linux\/err.h>\n/' include/linux/bpf.h
-          
-          # --- BONGKAR WERROR (ANTI-CRASH WARNING GCC MODERN) ---
-          # Mematikan aturan ketat di seluruh kernel agar peringatan tidak diubah menjadi error gagal compile
-          find . -type f -name "Makefile" -exec sed -i 's/-Werror//g' {} +
-          ./scripts/config --disable CONFIG_WERROR
           
           # 10. Sinkronisasi konfigurasi otomatis secara aman
           make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- olddefconfig
 
       - name: Compile Kernel (Strict Mode)
         run: |
+          # Bypass aturan peringatan GCC 10+ secara aman melalui flag C
           export KCFLAGS="-I$GITHUB_WORKSPACE/drivers/gpu/msm \
             -I$GITHUB_WORKSPACE/drivers/soc/qcom \
             -I$GITHUB_WORKSPACE/sound/soc/msm \
@@ -244,7 +240,9 @@ jobs:
             -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/sensor/io \
             -I$GITHUB_WORKSPACE/drivers/misc \
             -I$GITHUB_WORKSPACE/drivers/net/ethernet/msm \
-            -I."
+            -I. \
+            -Wno-error -Wno-stringop-overread -Wno-array-bounds"
+            
           make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="$KCFLAGS" -j2
 
       - name: Package Raw Bins (No AnyKernel3)
