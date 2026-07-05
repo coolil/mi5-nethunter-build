@@ -21,17 +21,18 @@ jobs:
         sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev bison flex libelf-dev
         sudo apt-get install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi unzip p7zip-full wget git
 
-    # ================= INJEKSI KERNELSU BACKPORT DRIVER 4.4 (ANTI-REJECT) =================
+    # ================= INJEKSI KERNELSU BACKPORT DRIVER 4.4 (FIX FOLDER PATH) =================
     - name: Integrate KernelSU (Legacy Backport 4.4)
       run: |
-        # 1. Tarik driver ksu khusus yang sudah dioptimasi untuk kernel versi 4.4
+        # 1. Tarik driver ksu khusus dari repositori resmi
         git clone https://github.com/tiann/KernelSU.git drivers/kernelsu
         
-        # 2. Daftarkan driver KernelSU ke dalam tumpukan sistem kompilasi subsistem drivers
-        echo "obj-y += kernelsu/" >> drivers/Makefile
+        # 2. Buat berkas jembatan Kconfig & Makefile agar sistem build mendeteksi sub-folder kernel/ bawaan KSU
+        echo 'source "drivers/kernelsu/kernel/Kconfig"' > drivers/kernelsu/Kconfig
+        echo 'obj-y += kernel/' > drivers/kernelsu/Makefile
         
-        # 3. Inject modul path KernelSU langsung ke berkas utama kernel agar otomatis diproses
-        sed -i 's/object-y/obj-y/g' drivers/kernelsu/kernel/Makefile 2>/dev/null || true
+        # 3. Daftarkan folder induk KernelSU ke dalam tumpukan sistem kompilasi drivers utama
+        echo "obj-y += kernelsu/" >> drivers/Makefile
     # =====================================================================================
 
     - name: Clone External Driver RTL8188EUS (TP-Link v2/v3)
