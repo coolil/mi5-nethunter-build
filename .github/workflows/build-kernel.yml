@@ -1,4 +1,4 @@
-Name: Build Mi 5 NetHunter Kernel Super - Tahap 34 PERFECT FIX
+name: Build Mi 5 NetHunter Kernel Super - Tahap 34 PERFECT FIX
 
 on:
   workflow_dispatch:
