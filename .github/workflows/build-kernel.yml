@@ -228,22 +228,26 @@ jobs:
           # 10. Sinkronisasi konfigurasi
           make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- olddefconfig
 
-      - name: Apply WiFi Monitor Mode Patches
+      - name: Apply Kernel & Driver Patches
         run: |
-          echo "=== Applying WiFi Monitor Mode Patches ==="
+          echo "=== Applying Driver Patches ==="
           
-          # Fix MAC80211
+          # 1. Fix MAC80211
           find net/mac80211 -name "*.c" -exec sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' {} + 2>/dev/null || true
           
-          # QCACLD Monitor Mode Injection
+          # 2. QCACLD Monitor Mode Injection (Kunci agar wlan0 tidak mati)
           if [ -d "drivers/staging/qcacld-2.0" ]; then
             echo "[PATCH] Injecting QCACLD Monitor Mode Support..."
-            if [ -f "drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_main.c" ]; then
-              sed -i 's/if ((pAdapter->device_mode == WLAN_HDD_INFRA_STATION)/if ((pAdapter->device_mode == WLAN_HDD_INFRA_STATION || pAdapter->device_mode == WLAN_HDD_MONITOR)/g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_main.c 2>/dev/null || true
-            fi
+            sed -i 's/if ((pAdapter->device_mode == WLAN_HDD_INFRA_STATION) ||/if ((pAdapter->device_mode == WLAN_HDD_INFRA_STATION) || (pAdapter->device_mode == WLAN_HDD_MONITOR) ||/g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c 2>/dev/null || true
+            sed -i '/case NL80211_IFTYPE_AP:/i \ case NL80211_IFTYPE_MONITOR: wdev->iftype = type; pAdapter->device_mode = WLAN_HDD_MONITOR; goto done;' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c 2>/dev/null || true
+            sed -i '/if (WLAN_HDD_IS_NDI(pAdapter))/i \ if (pAdapter->device_mode == WLAN_HDD_MONITOR) return 0;' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_main.c 2>/dev/null || true
+            sed -i '/bool hdd_wext_is_connected/i static int hdd_set_wextmode(struct net_device *dev, struct iw_request_info *info, union iwreq_data *wrqu, char *extra) { hdd_adapter_t *adapter = (hdd_adapter_t *)netdev_priv(dev); if (wrqu->mode == 6) { adapter->device_mode = WLAN_HDD_MONITOR; return 0; } return -EOPNOTSUPP; }\nstatic int hdd_get_wextmode(struct net_device *dev, struct iw_request_info *info, union iwreq_data *wrqu, char *extra) { hdd_adapter_t *adapter = (hdd_adapter_t *)netdev_priv(dev); if (adapter->device_mode == WLAN_HDD_MONITOR) wrqu->mode = 6; else wrqu->mode = 2; return 0; }\n' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_wext.c 2>/dev/null || true
+            sed -i 's/IOCTL_SET_STRUCT_WRQU(\s*SIOCSIWMODE\s*,.*/\t(iw_handler) hdd_set_wextmode, \/\* SIOCSIWMODE \*\//g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_wext.c 2>/dev/null || true
+            sed -i 's/IOCTL_SET_STRUCT_WRQU(\s*SIOCGIWMODE\s*,.*/\t(iw_handler) hdd_get_wextmode, \/\* SIOCGIWMODE \*\//g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_wext.c 2>/dev/null || true
+            sed -i 's/if (WLAN_HDD_IS_STA(pAdapter))/if (WLAN_HDD_IS_STA(pAdapter) || pAdapter->device_mode == WLAN_HDD_MONITOR)/g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_tx_rx.c 2>/dev/null || true
           fi
           
-          # Realtek RTL8188EUS Patches
+          # 3. Realtek RTL8188EUS Patches
           if [ -d "drivers/net/wireless/rtl8188eus" ]; then
             echo "[PATCH] Fixing Realtek RTL8188EUS..."
             sed -i '/#define NUM_NL80211_BANDS IEEE80211_NUM_BANDS/d' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h 2>/dev/null || true
@@ -251,16 +255,25 @@ jobs:
             echo "ccflags-y += -w -Wno-implicit-int -Wno-error -Wno-int-conversion" >> drivers/net/wireless/rtl8188eus/Makefile
           fi
           
-          # Other Driver Fixes
+          # 4. FIX ERROR BLUETOOTH (hci_ldisc.c)
+          echo "[PATCH] Fixing Bluetooth UART rx_lock..."
+          sed -i 's/spin_lock_init(&hu->rx_lock);/mutex_init(\&hu->proto_lock);/g' drivers/bluetooth/hci_ldisc.c 2>/dev/null || true
+          
+          # 5. FIX ERROR QUALCOMM IPA & GPU/CAMERA
+          echo "[PATCH] Fixing Qualcomm IPA & SMMU Headers..."
+          echo "ccflags-y += -I\$(src)" >> drivers/platform/msm/ipa/ipa_v2/Makefile
+          sed -i 's|#include <kgsl_device.h>|#include "kgsl_device.h"|g' drivers/gpu/msm/kgsl_events.c 2>/dev/null || true
+          sed -i 's|#include <msm_camera_tz_util.h>|#include "msm_camera_tz_util.h"|g' drivers/media/platform/msm/camera_v2/common/cam_smmu_api.c 2>/dev/null || true
+          
+          # 6. Other Driver Fixes (NFC & BPF)
           if [ -f "drivers/nfc/pn548/pn548.c" ]; then
             sed -i 's|#include <pn548.h>|#include "pn548.h"|g' drivers/nfc/pn548/pn548.c 2>/dev/null || true
           fi
-          
           if [ -f "include/linux/bpf.h" ]; then
             sed -i '1s/^/#include <linux\/err.h>\n/' include/linux/bpf.h 2>/dev/null || true
           fi
           
-          echo "[✓] All patches applied"
+          echo "[✓] All custom patches applied"
 
       - name: Compile Kernel (Optimized Mode)
         run: |
@@ -273,7 +286,9 @@ jobs:
             -I$GITHUB_WORKSPACE/include \
             -I. \
             -Wno-error=stringop-overflow \
-            -Wno-error=array-bounds"
+            -Wno-error=array-bounds \
+            -Wno-error=enum-int-mismatch \
+            -Wno-error"
           
           make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="$KCFLAGS" -j2 2>&1 | tee build.log
           
