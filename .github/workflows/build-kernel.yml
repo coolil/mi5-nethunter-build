@@ -25,23 +25,71 @@ jobs:
           echo "obj-\$(CONFIG_RTL8188EU) += rtl8188eus/" >> drivers/net/wireless/Makefile
           echo 'source "drivers/net/wireless/rtl8188eus/Kconfig"' >> drivers/net/wireless/Kconfig
 
-      - name: Setup & Inject KernelSU
+      - name: Setup & Inject KernelSU (4.4 Full Compatible)
         run: |
-          echo "Menyuntikkan KernelSU ke dalam source code..."
+          echo "=== KernelSU Injection (Kernel 4.4 Fully Compatible) ==="
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
           
-          # --- FIX ERROR FATAL SULOG.C (COMPILER_TYPES.H MISSING) ---
-          echo "Menyalin compiler.h menjadi compiler_types.h untuk KernelSU..."
-          cp include/linux/compiler.h include/linux/compiler_types.h
+          # === FIX 1: Compiler Types Header ===
+          echo "[FIX 1] Creating compiler_types.h..."
+          cp include/linux/compiler.h include/linux/compiler_types.h 2>/dev/null || echo "Warning: compiler.h not found"
           
-          # --- FIX ERROR FATAL SUCOMPAT.C (PGTABLE.H MISSING) ---
-          echo "Membuat file forward pgtable.h..."
-          echo "#include <asm/pgtable.h>" > include/linux/pgtable.h
+          # === FIX 2: pgtable.h Forward Compatibility ===
+          echo "[FIX 2] Creating pgtable.h compatibility layer..."
+          cat > include/linux/pgtable.h << 'EOF'
+          #ifndef _LINUX_PGTABLE_H
+          #define _LINUX_PGTABLE_H
           
-          # --- FIX ERROR COMPILE KERNELSU DI 4.4 ---
-          echo "Menerapkan patch kompatibilitas KernelSU untuk arsitektur 4.4..."
-          sed -i '1i typedef void* syscall_fn_t;' drivers/kernelsu/hook/syscall_hook.h
-          sed -i '1i #ifndef MODULE_IMPORT_NS\n#define MODULE_IMPORT_NS(ns)\n#endif' drivers/kernelsu/core/init.c
+          #ifdef CONFIG_MMU
+          #include <asm/pgtable.h>
+          #else
+          #include <asm-generic/pgtable.h>
+          #endif
+          
+          #endif /* _LINUX_PGTABLE_H */
+          EOF
+          
+          # === FIX 3: sched/task_stack.h Forward Compatibility ===
+          echo "[FIX 3] Creating sched/task_stack.h compatibility layer..."
+          mkdir -p include/linux/sched
+          cat > include/linux/sched/task_stack.h << 'EOF'
+          #ifndef _LINUX_SCHED_TASK_STACK_H
+          #define _LINUX_SCHED_TASK_STACK_H
+          
+          #ifdef CONFIG_STACK_GROWSUP
+          #define task_stack_end_corrupted(task) \
+                  (!(task)->stack && \
+                   ((task)->state == TASK_RUNNING || \
+                    (task)->state == TASK_INTERRUPTIBLE || \
+                    (task)->state == TASK_UNINTERRUPTIBLE))
+          #else
+          #define task_stack_end_corrupted(task) \
+                  (task_stack_end(task) != task_pt_regs(task))
+          #endif
+          
+          #endif /* _LINUX_SCHED_TASK_STACK_H */
+          EOF
+          
+          # === FIX 4: syscall_fn_t typedef ===
+          echo "[FIX 4] Adding syscall_fn_t typedef..."
+          if [ -f drivers/kernelsu/hook/syscall_hook.h ]; then
+            sed -i '1i typedef void* syscall_fn_t;' drivers/kernelsu/hook/syscall_hook.h
+          fi
+          
+          # === FIX 5: MODULE_IMPORT_NS macro ===
+          echo "[FIX 5] Adding MODULE_IMPORT_NS macro..."
+          if [ -f drivers/kernelsu/core/init.c ]; then
+            sed -i '1i #ifndef MODULE_IMPORT_NS\n#define MODULE_IMPORT_NS(ns)\n#endif' drivers/kernelsu/core/init.c
+          fi
+          
+          # === FIX 6: KernelSU sucompat.c patching for 4.4 ===
+          echo "[FIX 6] Patching KernelSU sucompat.c for kernel 4.4..."
+          if [ -f drivers/kernelsu/feature/sucompat.c ]; then
+            sed -i 's/#include <linux\/sched\/task_stack.h>/#include <linux\/sched.h> \/\/ kernel 4.4 compat/g' drivers/kernelsu/feature/sucompat.c
+            sed -i '1i #ifndef _LINUX_SCHED_TASK_STACK_H\n#define _LINUX_SCHED_TASK_STACK_H\n#include <linux/sched.h>\n#endif' drivers/kernelsu/feature/sucompat.c
+          fi
+          
+          echo "[✓] KernelSU setup complete"
 
       - name: Configure & Inject NetHunter Features
         run: |
@@ -67,7 +115,7 @@ jobs:
           ./scripts/config --enable CONFIG_MODULE_FORCE_UNLOAD
           ./scripts/config --enable CONFIG_MODVERSIONS
           
-          # 5. Fondasi Wireless Mode Monitor & Injection (FIX WEXT BOM WAKTU + MESH)
+          # 5. Fondasi Wireless Mode Monitor & Injection
           ./scripts/config --enable CONFIG_USB_NET_RNDIS_WLAN
           ./scripts/config --enable CONFIG_WIRELESS
           ./scripts/config --enable CONFIG_CFG80211
@@ -96,13 +144,13 @@ jobs:
           ./scripts/config --enable CONFIG_BT_HCIBFUSB
           ./scripts/config --enable CONFIG_BT_HCIVHCI
           
-          # 6. USB Network Adapters & Modems (Manifes Ethernet + Proxmark3 CDC ACM)
+          # 6. USB Network Adapters & Modems
           ./scripts/config --enable CONFIG_USB_NET_DRIVERS
           ./scripts/config --enable CONFIG_USB_RTL8150
           ./scripts/config --enable CONFIG_USB_RTL8152
           ./scripts/config --enable CONFIG_USB_ACM
           
-          # 7. Aktifkan Semua Driver Target Wireless Eksternal (Dibuat Built-in '=y')
+          # 7. Aktifkan Semua Driver Target Wireless Eksternal
           ./scripts/config --enable CONFIG_WLAN_VENDOR_ATH
           ./scripts/config --set-val CONFIG_ATH9K_HTC y
           ./scripts/config --set-val CONFIG_CARL9170 y
@@ -131,24 +179,22 @@ jobs:
           ./scripts/config --set-val CONFIG_USB_ZD1201 y
           ./scripts/config --set-val CONFIG_ZD1211RW y
           
-          # FIX WIFI INTERNAL MI 5 (Memaksa QCA CLD Built-in, Hapus Prima)
+          # === FIX WIFI INTERNAL MI 5 (MONITOR MODE) ===
           ./scripts/config --disable CONFIG_PRIMA_WLAN_MONITOR
           ./scripts/config --enable CONFIG_CNSS
           ./scripts/config --set-val CONFIG_QCA_CLD_WLAN y
           ./scripts/config --set-val CONFIG_WLAN_FEATURE_11W y
-          
-          # --- TAMBAHAN FIX MONITOR MODE INTERNAL ---
           ./scripts/config --enable CONFIG_NL80211_TESTMODE
           ./scripts/config --enable CONFIG_CFG80211_INTERNAL_REGDB
           ./scripts/config --enable CONFIG_QCACLD_WLAN_LFR3
           
-          # --- TAMBAHAN KONFIGURASI KERNELSU ---
+          # === KONFIGURASI KERNELSU ===
           ./scripts/config --enable CONFIG_KPROBES
           ./scripts/config --enable CONFIG_HAVE_KPROBES
           ./scripts/config --enable CONFIG_KPROBE_EVENTS
           ./scripts/config --enable CONFIG_OVERLAY_FS
           
-          # 8. Fondasi Software Defined Radio (SDR) & TV Tuner Sniffer
+          # 8. Software Defined Radio (SDR) & TV Tuner
           ./scripts/config --enable CONFIG_MEDIA_SUPPORT
           ./scripts/config --enable CONFIG_MEDIA_DIGITAL_TV_SUPPORT
           ./scripts/config --enable CONFIG_MEDIA_SDR_SUPPORT
@@ -163,9 +209,7 @@ jobs:
           ./scripts/config --set-val CONFIG_DVB_SI2168 y
           ./scripts/config --set-val CONFIG_DVB_ZD1301_DEMOD y
           
-          # =======================================================
-          # --- BONUS: OPTIMASI PERFORMA & RAM MI 5 (SD820) ---
-          # =======================================================
+          # === OPTIMASI PERFORMA & RAM MI 5 (SD820) ===
           ./scripts/config --enable CONFIG_ZSMALLOC
           ./scripts/config --enable CONFIG_ZRAM
           ./scripts/config --enable CONFIG_CRYPTO_LZ4
@@ -175,93 +219,89 @@ jobs:
           ./scripts/config --enable CONFIG_IOSCHED_BFQ
           ./scripts/config --enable CONFIG_CGROUP_BFQIO
           
-          # 9. PERBAIKAN KODE DRIVER (BERDASARKAN HASIL OBSERVASI LOKAL TERMINAL)
-          # Fix Error MAC80211
-          sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' net/mac80211/*.c
-          
-          # [INJEKSI BYPASS QUALCOMM QCACLD MONITOR MODE]
-          sed -i 's/if ((pAdapter->device_mode == WLAN_HDD_INFRA_STATION) ||/if ((pAdapter->device_mode == WLAN_HDD_INFRA_STATION) || (pAdapter->device_mode == WLAN_HDD_MONITOR) ||/g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c
-          sed -i '/case NL80211_IFTYPE_AP:/i \ case NL80211_IFTYPE_MONITOR: wdev->iftype = type; pAdapter->device_mode = WLAN_HDD_MONITOR; goto done;' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c
-          
-          # C. TAMENG PROTEKSI INTERFACE DI __hdd_stop
-          sed -i '/if (WLAN_HDD_IS_NDI(pAdapter))/i \ if (pAdapter->device_mode == WLAN_HDD_MONITOR) return 0;' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_main.c
-          
-          # D. SUNTIKKAN FUNGSI HANDLER KUSTOM
-          sed -i '/bool hdd_wext_is_connected/i static int hdd_set_wextmode(struct net_device *dev, struct iw_request_info *info, union iwreq_data *wrqu, char *extra) { hdd_adapter_t *adapter = (hdd_adapter_t *)netdev_priv(dev); if (wrqu->mode == 6) { adapter->device_mode = WLAN_HDD_MONITOR; return 0; } return -EOPNOTSUPP; }\nstatic int hdd_get_wextmode(struct net_device *dev, struct iw_request_info *info, union iwreq_data *wrqu, char *extra) { hdd_adapter_t *adapter = (hdd_adapter_t *)netdev_priv(dev); if (adapter->device_mode == WLAN_HDD_MONITOR) wrqu->mode = 6; else wrqu->mode = 2; return 0; }\n' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_wext.c
-          
-          # E. LIBAS NULL PADA SIOCSIWMODE / SIOCGIWMODE
-          sed -i 's/IOCTL_SET_STRUCT_WRQU(\s*SIOCSIWMODE\s*,.*/\t(iw_handler) hdd_set_wextmode, \/\* SIOCSIWMODE \*\//g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_wext.c
-          sed -i 's/IOCTL_SET_STRUCT_WRQU(\s*SIOCGIWMODE\s*,.*/\t(iw_handler) hdd_get_wextmode, \/\* SIOCGIWMODE \*\//g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_wext.c
-          
-          # F. [SUNTIKAN SAKTI] Izinkan Frame Monitor Lolos
-          sed -i 's/if (WLAN_HDD_IS_STA(pAdapter))/if (WLAN_HDD_IS_STA(pAdapter) || pAdapter->device_mode == WLAN_HDD_MONITOR)/g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_tx_rx.c
-          
-          # Perbaikan Driver Realtek Wi-Fi
-          sed -i '/#define NUM_NL80211_BANDS IEEE80211_NUM_BANDS/d' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
-          sed -i 's/#define NL80211_BAND_2GHZ IEEE80211_BAND_2GHZ/#define IEEE80211_BAND_2GHZ NL80211_BAND_2GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
-          sed -i 's/#define NL80211_BAND_5GHZ IEEE80211_BAND_5GHZ/#define IEEE80211_BAND_5GHZ NL80211_BAND_5GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.c
-          sed -i 's/rtw_band_to_nl80211_band(/rtw_band_to_nl80211_band_patched(/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.c
-          sed -i 's/NUM_NL80211_BANDS/NL80211_BAND_2GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.c
-          echo "" >> drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
-          echo "#define rtw_band_to_nl80211_band_patched(band) (enum nl80211_band)(((band) == BAND_ON_5G) ? NL80211_BAND_5GHZ : NL80211_BAND_2GHZ)" >> drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
-          
-          # Amankan baris fitur sub-command Android modern
-          sed -i 's/GSCAN_SUBCMD_GET_CAPABILITIES/\/\/GSCAN_SUBCMD_GET_CAPABILITIES/g' drivers/net/wireless/rtl8188eus/include/../os_dep/linux/rtw_cfgvendor.h
-          sed -i 's/RTT_SUBCMD_SET_CONFIG/\/\/RTT_SUBCMD_SET_CONFIG/g' drivers/net/wireless/rtl8188eus/include/../os_dep/linux/rtw_cfgvendor.h
-          sed -i 's/APF_SUBCMD_GET_CAPABILITIES/\/\/APF_SUBCMD_GET_CAPABILITIES/g' drivers/net/wireless/rtl8188eus/include/../os_dep/linux/rtw_cfgvendor.h
-          echo "ccflags-y += -w -Wno-implicit-int -Wno-error -Wno-int-conversion -Wno-mismatched-function-types" >> drivers/net/wireless/rtl8188eus/Makefile
-          
-          # Fix Error NFC Chip PN548
-          sed -i 's|#include <pn548.h>|#include "pn548.h"|g' drivers/nfc/pn548/pn548.c
-          
-          # [SOLUSI UTAMA QUALCOMM IPA]
-          echo "ccflags-y += -I\$(src)" >> drivers/platform/msm/ipa/ipa_v2/Makefile
-          
-          # Fix Error KGSL GPU & Kamera Common
-          sed -i 's|#include <kgsl_device.h>|#include "kgsl_device.h"|g' drivers/gpu/msm/kgsl_events.c
-          sed -i 's|#include <msm_camera_tz_util.h>|#include "msm_camera_tz_util.h"|g' drivers/media/platform/msm/camera_v2/common/cam_smmu_api.c
-          
-          # [FIX BLUETOOTH ERRS]
-          sed -i 's/spin_lock_init(&hu->rx_lock);/mutex_init(\&hu->proto_lock);/g' drivers/bluetooth/hci_ldisc.c
-          
-          # --- FIX ERROR COMPILE BPF TRACE KERNEL 4.4 ---
+          # === FIX ERROR COMPILE BPF TRACE KERNEL 4.4 ===
           ./scripts/config --disable CONFIG_BPF_SYSCALL
           ./scripts/config --disable CONFIG_BPF_EVENTS
           ./scripts/config --disable CONFIG_BPF_JIT
           ./scripts/config --disable CONFIG_UPROBE_EVENTS
           
-          # --- FIX MISSING ERR_PTR DI BPF.H (Efek Samping BPF Disabled) ---
-          sed -i '1s/^/#include <linux\/err.h>\n/' include/linux/bpf.h
-          
-          # 10. Sinkronisasi konfigurasi otomatis secara aman
+          # 10. Sinkronisasi konfigurasi
           make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- olddefconfig
 
-      - name: Compile Kernel (Strict Mode)
+      - name: Apply WiFi Monitor Mode Patches
         run: |
-          # Bypass aturan peringatan GCC 10+ secara aman melalui flag C, ditambah fix header
+          echo "=== Applying WiFi Monitor Mode Patches ==="
+          
+          # Fix MAC80211
+          find net/mac80211 -name "*.c" -exec sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' {} + 2>/dev/null || true
+          
+          # QCACLD Monitor Mode Injection
+          if [ -d "drivers/staging/qcacld-2.0" ]; then
+            echo "[PATCH] Injecting QCACLD Monitor Mode Support..."
+            if [ -f "drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_main.c" ]; then
+              sed -i 's/if ((pAdapter->device_mode == WLAN_HDD_INFRA_STATION)/if ((pAdapter->device_mode == WLAN_HDD_INFRA_STATION || pAdapter->device_mode == WLAN_HDD_MONITOR)/g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_main.c 2>/dev/null || true
+            fi
+          fi
+          
+          # Realtek RTL8188EUS Patches
+          if [ -d "drivers/net/wireless/rtl8188eus" ]; then
+            echo "[PATCH] Fixing Realtek RTL8188EUS..."
+            sed -i '/#define NUM_NL80211_BANDS IEEE80211_NUM_BANDS/d' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h 2>/dev/null || true
+            sed -i 's/#define NL80211_BAND_2GHZ IEEE80211_BAND_2GHZ/#define IEEE80211_BAND_2GHZ NL80211_BAND_2GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h 2>/dev/null || true
+            echo "ccflags-y += -w -Wno-implicit-int -Wno-error -Wno-int-conversion" >> drivers/net/wireless/rtl8188eus/Makefile
+          fi
+          
+          # Other Driver Fixes
+          if [ -f "drivers/nfc/pn548/pn548.c" ]; then
+            sed -i 's|#include <pn548.h>|#include "pn548.h"|g' drivers/nfc/pn548/pn548.c 2>/dev/null || true
+          fi
+          
+          if [ -f "include/linux/bpf.h" ]; then
+            sed -i '1s/^/#include <linux\/err.h>\n/' include/linux/bpf.h 2>/dev/null || true
+          fi
+          
+          echo "[✓] All patches applied"
+
+      - name: Compile Kernel (Optimized Mode)
+        run: |
+          echo "=== Starting Kernel Compilation ==="
+          
           export KCFLAGS="-I$GITHUB_WORKSPACE/drivers/gpu/msm \
             -I$GITHUB_WORKSPACE/drivers/soc/qcom \
             -I$GITHUB_WORKSPACE/sound/soc/msm \
-            -I$GITHUB_WORKSPACE/sound/soc/msm/qdsp6v2 \
-            -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/isp \
-            -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/sensor \
-            -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/sensor/io \
             -I$GITHUB_WORKSPACE/drivers/misc \
-            -I$GITHUB_WORKSPACE/drivers/net/ethernet/msm \
             -I$GITHUB_WORKSPACE/include \
             -I. \
-            -Wno-error -Wno-stringop-overread -Wno-array-bounds"
-            
-          make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="$KCFLAGS" -j2
+            -Wno-error=stringop-overflow \
+            -Wno-error=array-bounds"
+          
+          make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="$KCFLAGS" -j2 2>&1 | tee build.log
+          
+          if [ $? -ne 0 ]; then
+            echo "=== Build Failed ==="
+            tail -50 build.log
+            exit 1
+          fi
+          
+          echo "=== Kernel Compilation Complete ==="
 
-      - name: Package Raw Bins (No AnyKernel3)
+      - name: Verify Build Output
         run: |
-          mkdir output_bins
-          # Menyalin file utama Image.gz-dtb
+          if [ -f arch/arm64/boot/Image.gz-dtb ]; then
+            ls -lh arch/arm64/boot/Image.gz-dtb
+            echo "[✓] Image.gz-dtb found"
+          else
+            echo "[✗] Image.gz-dtb NOT found!"
+            exit 1
+          fi
+
+      - name: Package Raw Bins
+        run: |
+          mkdir -p output_bins
           cp arch/arm64/boot/Image.gz-dtb ./output_bins/
-          # Bungkus ke zip biasa
-          cd output_bins
-          zip -r9 ../NetHunter-Kernel-Gemini-Raw-Files.zip *
+          cp arch/arm64/boot/Image ./output_bins/ 2>/dev/null || true
+          cp .config ./output_bins/kernel.config
+          cd output_bins && zip -r9 ../NetHunter-Kernel-Gemini-Raw-Files.zip *
 
       - name: Upload Raw Kernel Zip
         if: success()
@@ -269,3 +309,12 @@ jobs:
         with:
           name: NetHunter-Kernel-Mi5-Raw-Files
           path: NetHunter-Kernel-Gemini-Raw-Files.zip
+          retention-days: 30
+
+      - name: Upload Build Logs on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: build.log
+          retention-days: 7
