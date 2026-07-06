@@ -1,4 +1,4 @@
-name: Build Mi 5 NetHunter Kernel Super - Final Patch KSU
+name: Build Mi 5 NetHunter Kernel Super - No KSU (Stable)
 on: 
   workflow_dispatch:
 
@@ -24,72 +24,6 @@ jobs:
           git clone https://github.com/aircrack-ng/rtl8188eus.git drivers/net/wireless/rtl8188eus
           echo "obj-\$(CONFIG_RTL8188EU) += rtl8188eus/" >> drivers/net/wireless/Makefile
           echo 'source "drivers/net/wireless/rtl8188eus/Kconfig"' >> drivers/net/wireless/Kconfig
-
-      - name: Setup & Inject KernelSU (4.4 Full Compatible)
-        run: |
-          echo "=== KernelSU Injection (Kernel 4.4 Fully Compatible) ==="
-          curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
-          
-          # === FIX 1: Compiler Types Header ===
-          echo "[FIX 1] Creating compiler_types.h..."
-          cp include/linux/compiler.h include/linux/compiler_types.h 2>/dev/null || echo "Warning: compiler.h not found"
-          
-          # === FIX 2: pgtable.h Forward Compatibility ===
-          echo "[FIX 2] Creating pgtable.h compatibility layer..."
-          cat > include/linux/pgtable.h << 'EOF'
-          #ifndef _LINUX_PGTABLE_H
-          #define _LINUX_PGTABLE_H
-          
-          #ifdef CONFIG_MMU
-          #include <asm/pgtable.h>
-          #else
-          #include <asm-generic/pgtable.h>
-          #endif
-          
-          #endif /* _LINUX_PGTABLE_H */
-          EOF
-          
-          # === FIX 3: sched/task_stack.h Forward Compatibility ===
-          echo "[FIX 3] Creating sched/task_stack.h compatibility layer..."
-          mkdir -p include/linux/sched
-          cat > include/linux/sched/task_stack.h << 'EOF'
-          #ifndef _LINUX_SCHED_TASK_STACK_H
-          #define _LINUX_SCHED_TASK_STACK_H
-          
-          #ifdef CONFIG_STACK_GROWSUP
-          #define task_stack_end_corrupted(task) \
-                  (!(task)->stack && \
-                   ((task)->state == TASK_RUNNING || \
-                    (task)->state == TASK_INTERRUPTIBLE || \
-                    (task)->state == TASK_UNINTERRUPTIBLE))
-          #else
-          #define task_stack_end_corrupted(task) \
-                  (task_stack_end(task) != task_pt_regs(task))
-          #endif
-          
-          #endif /* _LINUX_SCHED_TASK_STACK_H */
-          EOF
-          
-          # === FIX 4: syscall_fn_t typedef ===
-          echo "[FIX 4] Adding syscall_fn_t typedef..."
-          if [ -f drivers/kernelsu/hook/syscall_hook.h ]; then
-            sed -i '1i typedef void* syscall_fn_t;' drivers/kernelsu/hook/syscall_hook.h
-          fi
-          
-          # === FIX 5: MODULE_IMPORT_NS macro ===
-          echo "[FIX 5] Adding MODULE_IMPORT_NS macro..."
-          if [ -f drivers/kernelsu/core/init.c ]; then
-            sed -i '1i #ifndef MODULE_IMPORT_NS\n#define MODULE_IMPORT_NS(ns)\n#endif' drivers/kernelsu/core/init.c
-          fi
-          
-          # === FIX 6: KernelSU sucompat.c patching for 4.4 ===
-          echo "[FIX 6] Patching KernelSU sucompat.c for kernel 4.4..."
-          if [ -f drivers/kernelsu/feature/sucompat.c ]; then
-            sed -i 's/#include <linux\/sched\/task_stack.h>/#include <linux\/sched.h> \/\/ kernel 4.4 compat/g' drivers/kernelsu/feature/sucompat.c
-            sed -i '1i #ifndef _LINUX_SCHED_TASK_STACK_H\n#define _LINUX_SCHED_TASK_STACK_H\n#include <linux/sched.h>\n#endif' drivers/kernelsu/feature/sucompat.c
-          fi
-          
-          echo "[✓] KernelSU setup complete"
 
       - name: Configure & Inject NetHunter Features
         run: |
@@ -188,12 +122,6 @@ jobs:
           ./scripts/config --enable CONFIG_CFG80211_INTERNAL_REGDB
           ./scripts/config --enable CONFIG_QCACLD_WLAN_LFR3
           
-          # === KONFIGURASI KERNELSU ===
-          ./scripts/config --enable CONFIG_KPROBES
-          ./scripts/config --enable CONFIG_HAVE_KPROBES
-          ./scripts/config --enable CONFIG_KPROBE_EVENTS
-          ./scripts/config --enable CONFIG_OVERLAY_FS
-          
           # 8. Software Defined Radio (SDR) & TV Tuner
           ./scripts/config --enable CONFIG_MEDIA_SUPPORT
           ./scripts/config --enable CONFIG_MEDIA_DIGITAL_TV_SUPPORT
@@ -235,7 +163,7 @@ jobs:
           # 1. Fix MAC80211
           find net/mac80211 -name "*.c" -exec sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' {} + 2>/dev/null || true
           
-          # 2. QCACLD Monitor Mode Injection (Kunci agar wlan0 tidak mati)
+          # 2. QCACLD Monitor Mode Injection
           if [ -d "drivers/staging/qcacld-2.0" ]; then
             echo "[PATCH] Injecting QCACLD Monitor Mode Support..."
             sed -i 's/if ((pAdapter->device_mode == WLAN_HDD_INFRA_STATION) ||/if ((pAdapter->device_mode == WLAN_HDD_INFRA_STATION) || (pAdapter->device_mode == WLAN_HDD_MONITOR) ||/g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c 2>/dev/null || true
