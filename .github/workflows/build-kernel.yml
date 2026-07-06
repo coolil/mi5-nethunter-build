@@ -1,4 +1,4 @@
-name: Build Mi 5 NetHunter Kernel Super - Tahap 41 KSU & Optimasi (Safe Werror)
+name: Build Mi 5 NetHunter Kernel Super - Final Patch KSU
 on: 
   workflow_dispatch:
 
@@ -29,6 +29,10 @@ jobs:
         run: |
           echo "Menyuntikkan KernelSU ke dalam source code..."
           curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
+          
+          # --- FIX ERROR FATAL SULOG.C (COMPILER_TYPES.H MISSING) ---
+          echo "Menyalin compiler.h menjadi compiler_types.h untuk KernelSU..."
+          cp include/linux/compiler.h include/linux/compiler_types.h
           
           # --- FIX ERROR COMPILE KERNELSU DI 4.4 ---
           echo "Menerapkan patch kompatibilitas KernelSU untuk arsitektur 4.4..."
@@ -191,7 +195,7 @@ jobs:
           # Perbaikan Driver Realtek Wi-Fi
           sed -i '/#define NUM_NL80211_BANDS IEEE80211_NUM_BANDS/d' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
           sed -i 's/#define NL80211_BAND_2GHZ IEEE80211_BAND_2GHZ/#define IEEE80211_BAND_2GHZ NL80211_BAND_2GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
-          sed -i 's/#define NL80211_BAND_5GHZ IEEE80211_BAND_5GHZ/#define IEEE80211_BAND_5GHZ NL80211_BAND_5GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
+          sed -i 's/#define NL80211_BAND_5GHZ IEEE80211_BAND_5GHZ/#define IEEE80211_BAND_5GHZ NL80211_BAND_5GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.c
           sed -i 's/rtw_band_to_nl80211_band(/rtw_band_to_nl80211_band_patched(/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.c
           sed -i 's/NUM_NL80211_BANDS/NL80211_BAND_2GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.c
           echo "" >> drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
@@ -230,7 +234,7 @@ jobs:
 
       - name: Compile Kernel (Strict Mode)
         run: |
-          # Bypass aturan peringatan GCC 10+ secara aman melalui flag C
+          # Bypass aturan peringatan GCC 10+ secara aman melalui flag C, ditambah fix header
           export KCFLAGS="-I$GITHUB_WORKSPACE/drivers/gpu/msm \
             -I$GITHUB_WORKSPACE/drivers/soc/qcom \
             -I$GITHUB_WORKSPACE/sound/soc/msm \
@@ -240,6 +244,7 @@ jobs:
             -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/sensor/io \
             -I$GITHUB_WORKSPACE/drivers/misc \
             -I$GITHUB_WORKSPACE/drivers/net/ethernet/msm \
+            -I$GITHUB_WORKSPACE/include \
             -I. \
             -Wno-error -Wno-stringop-overread -Wno-array-bounds"
             
