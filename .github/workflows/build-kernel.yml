@@ -34,6 +34,10 @@ jobs:
           echo "Menyalin compiler.h menjadi compiler_types.h untuk KernelSU..."
           cp include/linux/compiler.h include/linux/compiler_types.h
           
+          # --- FIX ERROR FATAL SUCOMPAT.C (PGTABLE.H MISSING) ---
+          echo "Membuat file forward pgtable.h..."
+          echo "#include <asm/pgtable.h>" > include/linux/pgtable.h
+          
           # --- FIX ERROR COMPILE KERNELSU DI 4.4 ---
           echo "Menerapkan patch kompatibilitas KernelSU untuk arsitektur 4.4..."
           sed -i '1i typedef void* syscall_fn_t;' drivers/kernelsu/hook/syscall_hook.h
