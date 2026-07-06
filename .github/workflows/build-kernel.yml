@@ -201,21 +201,33 @@ jobs:
             sed -i '1s/^/#include <linux\/err.h>\n/' include/linux/bpf.h 2>/dev/null || true
           fi
           
+          # 7. Trace Include Fix (Opsional)
+          if [ -f "include/trace/events/msm_cam.h" ]; then
+            sed -i 's|#include "msm_isp.h"|#include "../../../drivers/media/platform/msm/camera_v2/isp/msm_isp.h"|g' include/trace/events/msm_cam.h 2>/dev/null || true
+          fi
+          
           echo "[✓] All custom patches applied"
 
       - name: Compile Kernel (Optimized Mode)
         run: |
           echo "=== Starting Kernel Compilation ==="
           
+          # RESTORASI FULL INCLUDE PATHS UNTUK KAMERA DAN JARINGAN
           export KCFLAGS="-I$GITHUB_WORKSPACE/drivers/gpu/msm \
             -I$GITHUB_WORKSPACE/drivers/soc/qcom \
             -I$GITHUB_WORKSPACE/sound/soc/msm \
+            -I$GITHUB_WORKSPACE/sound/soc/msm/qdsp6v2 \
+            -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/isp \
+            -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/sensor \
+            -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/sensor/io \
             -I$GITHUB_WORKSPACE/drivers/misc \
+            -I$GITHUB_WORKSPACE/drivers/net/ethernet/msm \
             -I$GITHUB_WORKSPACE/include \
             -I. \
             -Wno-error=stringop-overflow \
             -Wno-error=array-bounds \
             -Wno-error=enum-int-mismatch \
+            -Wno-error=misleading-indentation \
             -Wno-error"
           
           make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="$KCFLAGS" -j2 2>&1 | tee build.log
@@ -253,11 +265,3 @@ jobs:
           name: NetHunter-Kernel-Mi5-Raw-Files
           path: NetHunter-Kernel-Gemini-Raw-Files.zip
           retention-days: 30
-
-      - name: Upload Build Logs on Failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-logs
-          path: build.log
-          retention-days: 7
