@@ -1,3 +1,8 @@
+name: Build Mi 5 NetHunter Kernel Super - No KSU (Stable)
+on: 
+  workflow_dispatch:
+
+jobs:
   build:
     runs-on: ubuntu-22.04
     env:
@@ -8,15 +13,15 @@
         run: |
           git clone --depth=1 -b twelve-4.4-inline https://github.com/B--B/Gemini-B--B-Kernel.git .
 
-      - name: Install Dependencies & Toolchains
+      - name: Install Dependencies & Toolchains (Fix GCC 9 for Legacy Kernel)
         run: |
           sudo apt-get update
           sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev bison flex libelf-dev unzip p7zip-full wget
           
-          # Install GCC 9 khusus agar kernel 4.4 tidak bootloop di server baru
+          # Install GCC 9 khusus agar kernel lawas tidak bootloop
           sudo apt-get install -y gcc-9-aarch64-linux-gnu gcc-9-arm-linux-gnueabi
           
-          # Paksa sistem menggunakan compiler GCC 9
+          # Paksa sistem menggunakan GCC 9
           sudo ln -s -f /usr/bin/aarch64-linux-gnu-gcc-9 /usr/bin/aarch64-linux-gnu-gcc
           sudo ln -s -f /usr/bin/arm-linux-gnueabi-gcc-9 /usr/bin/arm-linux-gnueabi-gcc
 
@@ -31,7 +36,7 @@
           # 1. Muat konfigurasi dasar HP (Xiaomi Mi 5 - gemini)
           make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- gemini_defconfig
           
-          # 2. Matikan LTO agar kompatibel dengan GCC bawaan GitHub
+          # 2. Matikan LTO agar kompatibel dengan GCC bawaan
           ./scripts/config --disable CONFIG_LTO_CLANG
           ./scripts/config --disable CONFIG_INPUT_DRV2604
           
