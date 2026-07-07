@@ -1,10 +1,5 @@
-name: Build Mi 5 NetHunter Kernel Super - No KSU (Stable)
-on: 
-  workflow_dispatch:
-
-jobs:
   build:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     env:
       ARCH: arm64
       SUBARCH: arm64
@@ -16,8 +11,14 @@ jobs:
       - name: Install Dependencies & Toolchains
         run: |
           sudo apt-get update
-          sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev bison flex libelf-dev
-          sudo apt-get install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi unzip p7zip-full wget
+          sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev bison flex libelf-dev unzip p7zip-full wget
+          
+          # Install GCC 9 khusus agar kernel 4.4 tidak bootloop di server baru
+          sudo apt-get install -y gcc-9-aarch64-linux-gnu gcc-9-arm-linux-gnueabi
+          
+          # Paksa sistem menggunakan compiler GCC 9
+          sudo ln -s -f /usr/bin/aarch64-linux-gnu-gcc-9 /usr/bin/aarch64-linux-gnu-gcc
+          sudo ln -s -f /usr/bin/arm-linux-gnueabi-gcc-9 /usr/bin/arm-linux-gnueabi-gcc
 
       - name: Clone External Driver RTL8188EUS (TP-Link v2/v3)
         run: |
