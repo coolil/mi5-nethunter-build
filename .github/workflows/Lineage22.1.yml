@@ -40,9 +40,12 @@ jobs:
         export CLANG_ARGS="CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-"
         
         # =========================================================================
-        # FIX ERROR COMPILER: WI-FI BAND MACROS & DTS SYNTAX PATCHES
+        # FIX ERROR COMPILER: CAMERA, BLUETOOTH & WI-FI PATCHES
         # =========================================================================
-        # A. Perbaikan Kompilasi DTS Qualcomm (Singkirkan DTS Referensi Otomotif yang Cacat)
+        # A. Perbaikan Driver Kamera Qualcomm (Ubah <angled> menjadi "quotes")
+        sed -i 's|<msm_camera_tz_util.h>|"msm_camera_tz_util.h"|g' drivers/media/platform/msm/camera_v2/common/cam_smmu_api.c
+        
+        # Singkirkan DTS Referensi Otomotif yang Cacat dari Antrean Build
         sed -i '/apq8096-v3-pmi8996-mdm9x55-i2s-mtp.dtb/d' arch/arm64/boot/dts/qcom/Makefile
         
         # B. Sapu Bersih Header Bluetooth Qualcomm Angled Brackets
@@ -60,7 +63,6 @@ jobs:
         sed -i 's/IEEE80211_BAND_5GHZ/NL80211_BAND_5GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.c
         sed -i 's/IEEE80211_NUM_BANDS/(NL80211_BAND_60GHZ + 1)/g' drivers/net/wireless/rtl8188eus/os_dep/linux/wifi_regd.c
         
-        # Amankan pendefinisian ganda pada file kustom Realtek header
         sed -i '/#define NL80211_BAND_2GHZ/d' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
         sed -i '/#define NL80211_BAND_5GHZ/d' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
         sed -i '/#define NUM_NL80211_BANDS/d' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
@@ -194,7 +196,7 @@ jobs:
       run: |
         export CLANG_ARGS="CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-"
         export KCFLAGS="-I$GITHUB_WORKSPACE/drivers/gpu/msm \
-                        -I$GITHUB_WORKSPACE/WORKSPACE/drivers/soc/qcom \
+                        -I$GITHUB_WORKSPACE/drivers/soc/qcom \
                         -I$GITHUB_WORKSPACE/sound/soc/msm \
                         -I$GITHUB_WORKSPACE/sound/soc/msm/qdsp6v2 \
                         -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/isp \
