@@ -35,14 +35,22 @@ jobs:
         echo "obj-\$(CONFIG_RTL8188EU) += rtl8188eus/" >> drivers/net/wireless/Makefile
         echo 'source "drivers/net/wireless/rtl8188eus/Kconfig"' >> drivers/net/wireless/Kconfig
 
+    - name: Run Code Patches (Fix Bluetooth & Wireless Errs)
+      run: |
+        # FIX ERROR MAC80211: Menambal konstanta pita 60GHZ modern
+        sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' net/mac80211/*.c
+        
+        # FIX ERROR BLUETOOTH UART: Mengomentari inisialisasi lock lama yang sudah dihapus oleh LineageOS
+        sed -i 's/spin_lock_init(\&hu->rx_lock);/\/\/spin_lock_init(\&hu->rx_lock);/g' drivers/bluetooth/hci_ldisc.c
+
     - name: Configure & Inject NetHunter Features
       run: |
         export CLANG_ARGS="CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-"
         
-        # 1. Muat konfigurasi dasar msm-perf hasil observasi terminal lokal
+        # 1. Muat konfigurasi dasar msm-perf
         make $CLANG_ARGS msm-perf_defconfig
         
-        # FIX ERROR SCHEDTUNE: Memastikan pondasi manajemen energi/prefer idle dipaksa aktif
+        # FIX ERROR SCHEDTUNE
         ./scripts/config --enable CONFIG_SCHEDTUNE
         ./scripts/config --enable CONFIG_CGROUPS
 
@@ -156,7 +164,6 @@ jobs:
     - name: Compile Kernel (Strict Mode via Proton Clang)
       run: |
         export CLANG_ARGS="CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-"
-        # SUNTIKAN FLAG KOMPILASI: Mengabaikan implicit declaration error dan mematikan perlakuan warning sebagai error
         export KCFLAGS="-w -Wno-implicit-function-declaration -Wno-error \
                         -I$GITHUB_WORKSPACE/drivers/gpu/msm \
                         -I$GITHUB_WORKSPACE/drivers/soc/qcom \
