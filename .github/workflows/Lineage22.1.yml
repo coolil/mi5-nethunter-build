@@ -21,21 +21,16 @@ jobs:
       run: |
         git clone --depth=1 -b twelve-4.4-inline https://github.com/B--B/Gemini-B--B-Kernel.git .
 
-    - name: Download Toolchains (Linaro GCC Stable)
+    - name: Clone Toolchains (Official GitHub AOSP Mirrors)
       run: |
-        mkdir -p tc
-        cd tc
-        # Download Toolchain 64-bit
-        wget -q https://releases.linaro.org/components/toolchain/binaries/7.5-2019.12/aarch64-linux-gnu/gcc-linaro-7.5.0-2019.12-x86_64_aarch64-linux-gnu.tar.xz
-        tar -xf gcc-linaro-7.5.0-2019.12-x86_64_aarch64-linux-gnu.tar.xz
+        # Naruh toolchain di luar folder kerja kernel agar tidak bentrok secara absolut
+        cd ..
+        git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git gcc64
+        git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git gcc32
         
-        # Download Toolchain 32-bit (Untuk kompatibilitas vDSO)
-        wget -q https://releases.linaro.org/components/toolchain/binaries/7.5-2019.12/arm-linux-gnueabi/gcc-linaro-7.5.0-2019.12-x86_64_arm-linux-gnueabi.tar.xz
-        tar -xf gcc-linaro-7.5.0-2019.12-x86_64_arm-linux-gnueabi.tar.xz
-        
-        # Daftarkan jalur ke sistem GitHub Runner secara permanen
-        echo "$GITHUB_WORKSPACE/tc/gcc-linaro-7.5.0-2019.12-x86_64_aarch64-linux-gnu/bin" >> $GITHUB_PATH
-        echo "$GITHUB_WORKSPACE/tc/gcc-linaro-7.5.0-2019.12-x86_64_arm-linux-gnueabi/bin" >> $GITHUB_PATH
+        # Daftarkan variabel lingkungan permanen ke GitHub Runner
+        echo "$GITHUB_WORKSPACE/../gcc64/bin" >> $GITHUB_PATH
+        echo "$GITHUB_WORKSPACE/../gcc32/bin" >> $GITHUB_PATH
 
     - name: Clone External Driver RTL8188EUS (TP-Link v2/v3)
       run: |
@@ -45,10 +40,10 @@ jobs:
 
     - name: Configure & Inject NetHunter Features
       run: |
-        # 1. Muat konfigurasi dasar menggunakan prefix target Linaro GCC yang valid
-        make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- gemini_defconfig
+        # 1. Muat konfigurasi dasar menggunakan prebuilt compiler AOSP
+        make CROSS_COMPILE=aarch64-linux-android- gemini_defconfig
         
-        # 2. Matikan LTO agar kompatibel dengan GCC bawaan
+        # 2. Matikan LTO agar kompatibel dengan GCC
         ./scripts/config --disable CONFIG_LTO_CLANG
         ./scripts/config --disable CONFIG_INPUT_DRV2604
 
@@ -153,7 +148,7 @@ jobs:
         ./scripts/config --set-val CONFIG_DVB_ZD1301_DEMOD y
 
         # Sinkronisasi konfigurasi otomatis secara aman
-        make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- olddefconfig
+        make CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- olddefconfig
 
     - name: Compile Kernel (Strict Mode)
       run: |
@@ -168,7 +163,7 @@ jobs:
                         -I$GITHUB_WORKSPACE/drivers/net/ethernet/msm \
                         -I."
                         
-        make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="$KCFLAGS" -j$(nproc)
+        make CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- KCFLAGS="$KCFLAGS" -j$(nproc)
 
     - name: Package Raw Bins
       run: |
