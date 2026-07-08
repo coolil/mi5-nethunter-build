@@ -24,12 +24,9 @@ jobs:
     - name: Download & Extract Proton Clang (Anti-Block Solution)
       run: |
         cd ..
-        # Mengunduh Proton Clang stabil berbasis LLVM modern (Sangat ringan & cepat diekstraksi)
         wget -q https://github.com/kdrag0n/proton-clang/archive/refs/heads/master.zip -O clang.zip
         unzip -q clang.zip
         mv proton-clang-master clang
-        
-        # Daftarkan jalur biner Clang LLVM langsung ke sistem utama
         echo "$GITHUB_WORKSPACE/../clang/bin" >> $GITHUB_PATH
 
     - name: Clone External Driver RTL8188EUS (TP-Link v2/v3)
@@ -40,8 +37,8 @@ jobs:
 
     - name: Configure & Inject NetHunter Features
       run: |
-        # Menggunakan standarisasi LLVM/Proton Clang terintegrasi (Sudah include cross-assembler internal)
-        export CLANG_ARGS="CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-"
+        # FIX DEFINITIF: Memaksa HOSTLD menggunakan linker bawaan Ubuntu 24.04 untuk melompati eror .relr.dyn
+        export CLANG_ARGS="CC=clang HOSTLD=ld CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-"
         
         # 1. Muat konfigurasi dasar HP menggunakan arsitektur Clang LLVM
         make $CLANG_ARGS gemini_defconfig
@@ -155,7 +152,7 @@ jobs:
 
     - name: Compile Kernel (Strict Mode via Proton Clang)
       run: |
-        export CLANG_ARGS="CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-"
+        export CLANG_ARGS="CC=clang HOSTLD=ld CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-"
         export KCFLAGS="-I$GITHUB_WORKSPACE/drivers/gpu/msm \
                         -I$GITHUB_WORKSPACE/drivers/soc/qcom \
                         -I$GITHUB_WORKSPACE/sound/soc/msm \
