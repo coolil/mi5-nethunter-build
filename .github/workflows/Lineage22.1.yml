@@ -40,13 +40,11 @@ jobs:
         export CLANG_ARGS="CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-"
         
         # =========================================================================
-        # FIX ERROR COMPILER: BLUETOOTH & NET/MAC80211 SYNTAX PATCHES
+        # FIX ERROR COMPILER: BLUETOOTH GLOBAL SAPU BERSIH & NET/MAC80211
         # =========================================================================
-        # Fix Bluetooth Header Angled Bracket Errors
-        sed -i 's|<btfm_slim.h>|"btfm_slim.h"|g' drivers/bluetooth/btfm_slim.c
-        sed -i 's|<btfm_slim_wcn3990.h>|"btfm_slim_wcn3990.h"|g' drivers/bluetooth/btfm_slim.c
-        sed -i 's|<btfm_slim.h>|"btfm_slim.h"|g' drivers/bluetooth/btfm_slim_wcn3990.h
-        sed -i 's|<btfm_slim.h>|"btfm_slim.h"|g' drivers/bluetooth/btfm_slim_codec.c
+        # Mantra Sakti: Mengubah semua include btfm_slim kurung siku menjadi tanda kutip di folder bluetooth
+        sed -i 's|<btfm_slim.h>|"btfm_slim.h"|g' drivers/bluetooth/*.[ch]
+        sed -i 's|<btfm_slim_wcn3990.h>|"btfm_slim_wcn3990.h"|g' drivers/bluetooth/*.[ch]
         
         # Bypass rx_lock lama dari hci_uart struct yang sudah terhapus di L22.1
         sed -i 's/spin_lock_init(&hu->rx_lock);/\/\/ spin_lock_init(\&hu->rx_lock);/g' drivers/bluetooth/hci_ldisc.c
