@@ -39,21 +39,24 @@ jobs:
       run: |
         export CLANG_ARGS="CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-"
         
-        # =========================================================================
-        # FIX ERROR DRIVER BLUETOOTH (Ubah <angled> menjadi "quotes" untuk Clang)
-        # =========================================================================
+        # 1. FIX DRIVER BLUETOOTH (Ubah <angled> menjadi "quotes" untuk Clang)
         sed -i 's|<btfm_slim.h>|"btfm_slim.h"|g' drivers/bluetooth/btfm_slim.c
         sed -i 's|<btfm_slim_wcn3990.h>|"btfm_slim_wcn3990.h"|g' drivers/bluetooth/btfm_slim.c
         sed -i 's|<btfm_slim.h>|"btfm_slim.h"|g' drivers/bluetooth/btfm_slim_wcn3990.h
         
-        # 1. Muat konfigurasi dasar msm-perf_defconfig
+        # 2. Muat konfigurasi dasar msm-perf_defconfig
         make $CLANG_ARGS msm-perf_defconfig
         
-        # 2. Atur konfigurasi keamanan & optimasi compiler
+        # 3. FIX EROR SCHED_TUNE (Mengaktifkan modul prefer_idle untuk kernel/sched/rt.c)
+        ./scripts/config --enable CONFIG_SCHED_TUNE
+        ./scripts/config --enable CONFIG_CGROUPS
+        ./scripts/config --enable CONFIG_CGROUP_SCHEDTUNE
+
+        # 4. Atur konfigurasi keamanan & optimasi compiler
         ./scripts/config --disable CONFIG_LTO_CLANG
         ./scripts/config --disable CONFIG_INPUT_DRV2604
 
-        # 3. Fitur Utama NetHunter & USB Gadget (FONDASI HID / BADUSB)
+        # 5. Fitur Utama NetHunter & USB Gadget (FONDASI HID / BADUSB)
         ./scripts/config --enable CONFIG_USB_GADGET
         ./scripts/config --enable CONFIG_USB_CONFIGFS
         ./scripts/config --enable CONFIG_USB_CONFIGFS_F_HID
@@ -62,13 +65,13 @@ jobs:
         ./scripts/config --enable CONFIG_PACKET
         ./scripts/config --enable CONFIG_NETFILTER
         
-        # 4. Fondasi Loadable Module Support
+        # 6. Fondasi Loadable Module Support
         ./scripts/config --enable CONFIG_MODULES
         ./scripts/config --enable CONFIG_MODULE_UNLOAD
         ./scripts/config --enable CONFIG_MODULE_FORCE_UNLOAD
         ./scripts/config --enable CONFIG_MODVERSIONS
 
-        # 5. Fondasi Wireless Mode Monitor & Injection
+        # 7. Fondasi Wireless Mode Monitor & Injection
         ./scripts/config --enable CONFIG_USB_NET_RNDIS_WLAN
         ./scripts/config --enable CONFIG_WIRELESS
         ./scripts/config --enable CONFIG_CFG80211
@@ -97,13 +100,13 @@ jobs:
         ./scripts/config --enable CONFIG_BT_HCIBFUSB
         ./scripts/config --enable CONFIG_BT_HCIVHCI
 
-        # 6. USB Network Adapters & Modems
+        # 8. USB Network Adapters & Modems
         ./scripts/config --enable CONFIG_USB_NET_DRIVERS
         ./scripts/config --enable CONFIG_USB_RTL8150
         ./scripts/config --enable CONFIG_USB_RTL8152
         ./scripts/config --enable CONFIG_USB_ACM
         
-        # 7. Driver Target Wireless Eksternal (Built-in '=y')
+        # 9. Driver Target Wireless Eksternal (Built-in '=y')
         ./scripts/config --enable CONFIG_WLAN_VENDOR_ATH
         ./scripts/config --set-val CONFIG_ATH9K_HTC y
         ./scripts/config --set-val CONFIG_CARL9170 y
@@ -138,7 +141,7 @@ jobs:
         ./scripts/config --set-val CONFIG_QCA_CLD_WLAN y
         ./scripts/config --set-val CONFIG_WLAN_FEATURE_11W y
 
-        # 8. Fondasi Software Defined Radio (SDR)
+        # 10. Fondasi Software Defined Radio (SDR)
         ./scripts/config --enable CONFIG_MEDIA_SUPPORT
         ./scripts/config --enable CONFIG_MEDIA_DIGITAL_TV_SUPPORT
         ./scripts/config --enable CONFIG_MEDIA_SDR_SUPPORT
