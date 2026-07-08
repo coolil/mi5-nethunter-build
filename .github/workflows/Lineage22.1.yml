@@ -21,14 +21,13 @@ jobs:
       run: |
         git clone --depth=1 -b twelve-4.4-inline https://github.com/B--B/Gemini-B--B-Kernel.git .
 
-    - name: Clone Toolchains (Official GitHub AOSP Mirrors)
+    - name: Clone Toolchains (Linaro GCC 7.5 Stable Mirror)
       run: |
-        # Naruh toolchain di luar folder kerja kernel agar tidak bentrok secara absolut
         cd ..
-        git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git gcc64
-        git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git gcc32
+        # Menarik compiler versi 7.5 untuk melewati proteksi minimum GCC 5.1
+        git clone --depth=1 https://github.com/Krypton-Project/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-gnu-7.x.git gcc64
+        git clone --depth=1 https://github.com/Krypton-Project/android_prebuilts_gcc_linux-x86_arm_arm-linux-gnueabi-7.x.git gcc32
         
-        # Daftarkan variabel lingkungan permanen ke GitHub Runner
         echo "$GITHUB_WORKSPACE/../gcc64/bin" >> $GITHUB_PATH
         echo "$GITHUB_WORKSPACE/../gcc32/bin" >> $GITHUB_PATH
 
@@ -40,8 +39,8 @@ jobs:
 
     - name: Configure & Inject NetHunter Features
       run: |
-        # 1. Muat konfigurasi dasar menggunakan prebuilt compiler AOSP
-        make CROSS_COMPILE=aarch64-linux-android- gemini_defconfig
+        # 1. Menggunakan prefix target kompilasi GNU standar (Linaro)
+        make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- gemini_defconfig
         
         # 2. Matikan LTO agar kompatibel dengan GCC
         ./scripts/config --disable CONFIG_LTO_CLANG
@@ -148,7 +147,7 @@ jobs:
         ./scripts/config --set-val CONFIG_DVB_ZD1301_DEMOD y
 
         # Sinkronisasi konfigurasi otomatis secara aman
-        make CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- olddefconfig
+        make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- olddefconfig
 
     - name: Compile Kernel (Strict Mode)
       run: |
@@ -163,7 +162,7 @@ jobs:
                         -I$GITHUB_WORKSPACE/drivers/net/ethernet/msm \
                         -I."
                         
-        make CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- KCFLAGS="$KCFLAGS" -j$(nproc)
+        make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="$KCFLAGS" -j$(nproc)
 
     - name: Package Raw Bins
       run: |
