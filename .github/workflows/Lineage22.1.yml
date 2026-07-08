@@ -39,8 +39,8 @@ jobs:
       run: |
         export CLANG_ARGS="CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-"
         
-        # 1. Muat konfigurasi dasar HP menggunakan arsitektur Clang LLVM
-        make $CLANG_ARGS gemini_defconfig
+        # FIX DEFINITIF: Menggunakan msm8996_defconfig sesuai standarisasi unified kernel LineageOS
+        make $CLANG_ARGS msm8996_defconfig
         
         # 2. Atur konfigurasi keamanan & optimasi compiler
         ./scripts/config --disable CONFIG_LTO_CLANG
