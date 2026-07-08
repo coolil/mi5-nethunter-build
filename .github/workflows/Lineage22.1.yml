@@ -38,6 +38,8 @@ jobs:
 
     - name: Configure & Inject NetHunter Features
       run: |
+        export PATH="$GITHUB_WORKSPACE/toolchains_gcc/aarch64-4.9/bin:$GITHUB_WORKSPACE/toolchains_gcc/arm-4.9/bin:$PATH"
+        
         # 1. FIX: Pasang kembali flag CROSS_COMPILE agar target gemini_defconfig terbaca sempurna
         make CROSS_COMPILE=aarch64-linux-android- gemini_defconfig
         
@@ -150,6 +152,7 @@ jobs:
 
     - name: Compile Kernel (Strict Mode)
       run: |
+        export PATH="$GITHUB_WORKSPACE/toolchains_gcc/aarch64-4.9/bin:$GITHUB_WORKSPACE/toolchains_gcc/arm-4.9/bin:$PATH"
         export KCFLAGS="-I$GITHUB_WORKSPACE/drivers/gpu/msm \
                         -I$GITHUB_WORKSPACE/drivers/soc/qcom \
                         -I$GITHUB_WORKSPACE/sound/soc/msm \
