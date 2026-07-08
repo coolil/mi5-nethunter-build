@@ -89,6 +89,17 @@ jobs:
         ./scripts/config --disable CONFIG_LTO_CLANG
         ./scripts/config --disable CONFIG_INPUT_DRV2604
 
+        # === OPTIMASI PERFORMA & RAM MI 5 (SD820) ===
+        ./scripts/config --enable CONFIG_ZSMALLOC
+        ./scripts/config --enable CONFIG_ZRAM
+        ./scripts/config --enable CONFIG_CRYPTO_LZ4
+        ./scripts/config --enable CONFIG_ZRAM_LZ4_COMPRESS
+        ./scripts/config --set-str CONFIG_ZRAM_COMP_ALGORITHM "lz4"
+        ./scripts/config --enable CONFIG_TCP_CONG_BBR
+        ./scripts/config --set-str CONFIG_DEFAULT_TCP_CONG "bbr"
+        ./scripts/config --set-val CONFIG_IOSCHED_BFQ y
+        ./scripts/config --enable CONFIG_CGROUP_BFQIO
+
         # 5. Fitur Utama NetHunter & USB Gadget (FONDASI HID / BADUSB)
         ./scripts/config --enable CONFIG_USB_GADGET
         ./scripts/config --enable CONFIG_USB_CONFIGFS
