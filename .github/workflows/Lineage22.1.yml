@@ -35,25 +35,20 @@ jobs:
         echo "obj-\$(CONFIG_RTL8188EU) += rtl8188eus/" >> drivers/net/wireless/Makefile
         echo 'source "drivers/net/wireless/rtl8188eus/Kconfig"' >> drivers/net/wireless/Kconfig
 
-    - name: Run Code Patches (Fix Bluetooth & Wireless Errs)
-      run: |
-        # FIX ERROR MAC80211: Menambal konstanta pita 60GHZ modern
-        sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' net/mac80211/*.c
-        
-        # FIX ERROR BLUETOOTH UART: Mengomentari inisialisasi lock lama yang sudah dihapus oleh LineageOS
-        sed -i 's/spin_lock_init(\&hu->rx_lock);/\/\/spin_lock_init(\&hu->rx_lock);/g' drivers/bluetooth/hci_ldisc.c
-
     - name: Configure & Inject NetHunter Features
       run: |
         export CLANG_ARGS="CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-"
         
-        # 1. Muat konfigurasi dasar msm-perf
+        # =========================================================================
+        # FIX ERROR DRIVER BLUETOOTH (Ubah <angled> menjadi "quotes" untuk Clang)
+        # =========================================================================
+        sed -i 's|<btfm_slim.h>|"btfm_slim.h"|g' drivers/bluetooth/btfm_slim.c
+        sed -i 's|<btfm_slim_wcn3990.h>|"btfm_slim_wcn3990.h"|g' drivers/bluetooth/btfm_slim.c
+        sed -i 's|<btfm_slim.h>|"btfm_slim.h"|g' drivers/bluetooth/btfm_slim_wcn3990.h
+        
+        # 1. Muat konfigurasi dasar msm-perf_defconfig
         make $CLANG_ARGS msm-perf_defconfig
         
-        # FIX ERROR SCHEDTUNE
-        ./scripts/config --enable CONFIG_SCHEDTUNE
-        ./scripts/config --enable CONFIG_CGROUPS
-
         # 2. Atur konfigurasi keamanan & optimasi compiler
         ./scripts/config --disable CONFIG_LTO_CLANG
         ./scripts/config --disable CONFIG_INPUT_DRV2604
@@ -164,8 +159,7 @@ jobs:
     - name: Compile Kernel (Strict Mode via Proton Clang)
       run: |
         export CLANG_ARGS="CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-"
-        export KCFLAGS="-w -Wno-implicit-function-declaration -Wno-error \
-                        -I$GITHUB_WORKSPACE/drivers/gpu/msm \
+        export KCFLAGS="-I$GITHUB_WORKSPACE/drivers/gpu/msm \
                         -I$GITHUB_WORKSPACE/drivers/soc/qcom \
                         -I$GITHUB_WORKSPACE/sound/soc/msm \
                         -I$GITHUB_WORKSPACE/sound/soc/msm/qdsp6v2 \
