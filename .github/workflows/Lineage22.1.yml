@@ -19,21 +19,18 @@ jobs:
 
     - name: Clone Kernel Source (Official LineageOS 22.1)
       run: |
-        # Menggunakan repositori resmi dan branch lineage-22.1 (Android 15)
         git clone --depth=1 -b lineage-22.1 https://github.com/LineageOS/android_kernel_xiaomi_msm8996.git .
 
-    - name: Clone Google Clang & Toolchains (AOSP Modern Standard)
+    - name: Download & Extract Proton Clang (Anti-Block Solution)
       run: |
         cd ..
-        # Mendownload Clang modern dan GCC pembantu langsung dari mirror tepercaya LineageOS
-        git clone --depth=1 https://github.com/LineageOS/android_prebuilts_clang_host_linux-x86.git clang
-        git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git gcc64
-        git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git gcc32
+        # Mengunduh Proton Clang stabil berbasis LLVM modern (Sangat ringan & cepat diekstraksi)
+        wget -q https://github.com/kdrag0n/proton-clang/archive/refs/heads/master.zip -O clang.zip
+        unzip -q clang.zip
+        mv proton-clang-master clang
         
-        # Daftarkan jalur biner ke sistem utama secara absolut
-        echo "$GITHUB_WORKSPACE/../clang/clang-r416183b1/bin" >> $GITHUB_PATH
-        echo "$GITHUB_WORKSPACE/../gcc64/bin" >> $GITHUB_PATH
-        echo "$GITHUB_WORKSPACE/../gcc32/bin" >> $GITHUB_PATH
+        # Daftarkan jalur biner Clang LLVM langsung ke sistem utama
+        echo "$GITHUB_WORKSPACE/../clang/bin" >> $GITHUB_PATH
 
     - name: Clone External Driver RTL8188EUS (TP-Link v2/v3)
       run: |
@@ -43,13 +40,13 @@ jobs:
 
     - name: Configure & Inject NetHunter Features
       run: |
-        # Variabel Compiler untuk Clang LLVM
-        export CLANG_ARGS="CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-"
+        # Menggunakan standarisasi LLVM/Proton Clang terintegrasi (Sudah include cross-assembler internal)
+        export CLANG_ARGS="CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-"
         
-        # 1. Muat konfigurasi dasar bawaan Xiaomi Mi 5 menggunakan Clang
+        # 1. Muat konfigurasi dasar HP menggunakan arsitektur Clang LLVM
         make $CLANG_ARGS gemini_defconfig
         
-        # 2. Atur LTO sesuai standardisasi Clang
+        # 2. Atur konfigurasi keamanan & optimasi compiler
         ./scripts/config --disable CONFIG_LTO_CLANG
         ./scripts/config --disable CONFIG_INPUT_DRV2604
 
@@ -153,12 +150,12 @@ jobs:
         ./scripts/config --set-val CONFIG_DVB_SI2168 y
         ./scripts/config --set-val CONFIG_DVB_ZD1301_DEMOD y
 
-        # Sinkronisasi konfigurasi secara aman via Clang
+        # Sinkronisasi konfigurasi via Proton Clang lingkungan steril
         make $CLANG_ARGS olddefconfig
 
-    - name: Compile Kernel (Strict Mode via Clang)
+    - name: Compile Kernel (Strict Mode via Proton Clang)
       run: |
-        export CLANG_ARGS="CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-"
+        export CLANG_ARGS="CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-"
         export KCFLAGS="-I$GITHUB_WORKSPACE/drivers/gpu/msm \
                         -I$GITHUB_WORKSPACE/drivers/soc/qcom \
                         -I$GITHUB_WORKSPACE/sound/soc/msm \
