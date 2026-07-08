@@ -40,13 +40,20 @@ jobs:
         export CLANG_ARGS="CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-"
         
         # =========================================================================
-        # FIX ERROR COMPILER (Bluetooth Header & Struct Fixes)
+        # FIX ERROR COMPILER: BLUETOOTH & NET/MAC80211 SYNTAX PATCHES
         # =========================================================================
+        # Fix Bluetooth Header Angled Bracket Errors
         sed -i 's|<btfm_slim.h>|"btfm_slim.h"|g' drivers/bluetooth/btfm_slim.c
         sed -i 's|<btfm_slim_wcn3990.h>|"btfm_slim_wcn3990.h"|g' drivers/bluetooth/btfm_slim.c
         sed -i 's|<btfm_slim.h>|"btfm_slim.h"|g' drivers/bluetooth/btfm_slim_wcn3990.h
+        sed -i 's|<btfm_slim.h>|"btfm_slim.h"|g' drivers/bluetooth/btfm_slim_codec.c
+        
+        # Bypass rx_lock lama dari hci_uart struct yang sudah terhapus di L22.1
         sed -i 's/spin_lock_init(&hu->rx_lock);/\/\/ spin_lock_init(\&hu->rx_lock);/g' drivers/bluetooth/hci_ldisc.c
         
+        # Fix Mac80211 60GHZ Band Naming untuk Modern Android 15 Compiler Standards
+        sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' net/mac80211/*.c
+
         # =========================================================================
         # INJEKSI BYPASS QUALCOMM QCACLD MONITOR MODE (Official LineageOS Path)
         # =========================================================================
