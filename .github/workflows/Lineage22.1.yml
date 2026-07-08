@@ -39,15 +39,35 @@ jobs:
       run: |
         export CLANG_ARGS="CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-"
         
-        # 1. FIX DRIVER BLUETOOTH (Ubah <angled> menjadi "quotes" untuk Clang)
+        # =========================================================================
+        # FIX ERROR COMPILER (Bluetooth Header & Struct Fixes)
+        # =========================================================================
         sed -i 's|<btfm_slim.h>|"btfm_slim.h"|g' drivers/bluetooth/btfm_slim.c
         sed -i 's|<btfm_slim_wcn3990.h>|"btfm_slim_wcn3990.h"|g' drivers/bluetooth/btfm_slim.c
         sed -i 's|<btfm_slim.h>|"btfm_slim.h"|g' drivers/bluetooth/btfm_slim_wcn3990.h
+        sed -i 's/spin_lock_init(&hu->rx_lock);/\/\/ spin_lock_init(\&hu->rx_lock);/g' drivers/bluetooth/hci_ldisc.c
+        
+        # =========================================================================
+        # INJEKSI BYPASS QUALCOMM QCACLD MONITOR MODE (Official LineageOS Path)
+        # =========================================================================
+        # A. Loloskan status WLAN_HDD_MONITOR pada kondisi IF utama agar tidak diblokir di awal
+        sed -i 's/if ((pAdapter->device_mode == WLAN_HDD_INFRA_STATION) ||/if ((pAdapter->device_mode == WLAN_HDD_INFRA_STATION) || (pAdapter->device_mode == WLAN_HDD_MONITOR) ||/g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c
+        
+        # B. Menempatkan CASE MONITOR tepat di atas AP Mode agar tidak terjebak aturan Station
+        sed -i '/case NL80211_IFTYPE_AP:/i \        case NL80211_IFTYPE_MONITOR: wdev->iftype = type; pAdapter->device_mode = WLAN_HDD_MONITOR; goto done;' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c
+        
+        # C. Tameng proteksi interface di __hdd_stop (Mencegah pembersihan sesi BSS Mode Monitor)
+        sed -i '/if (WLAN_HDD_IS_NDI(pAdapter))/i \    if (pAdapter->device_mode == WLAN_HDD_MONITOR) return 0;' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_main.c
+        
+        # D. BYPASS FILTER TX/RX PAKET DATA QUALCOMM (Menggunakan baris hasil temuan grep wlan_hdd_main.c)
+        sed -i 's/if ((pAdapter->device_mode == WLAN_HDD_INFRA_STATION) ||/if ((pAdapter->device_mode == WLAN_HDD_INFRA_STATION) || pAdapter->device_mode == WLAN_HDD_MONITOR ||/g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_main.c
+        
+        # =========================================================================
         
         # 2. Muat konfigurasi dasar msm-perf_defconfig
         make $CLANG_ARGS msm-perf_defconfig
         
-        # 3. FIX EROR SCHED_TUNE (Mengaktifkan modul prefer_idle untuk kernel/sched/rt.c)
+        # 3. FIX EROR SCHED_TUNE
         ./scripts/config --enable CONFIG_SCHED_TUNE
         ./scripts/config --enable CONFIG_CGROUPS
         ./scripts/config --enable CONFIG_CGROUP_SCHEDTUNE
