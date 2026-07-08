@@ -174,11 +174,11 @@ jobs:
           cp arch/arm64/boot/Image.gz ./output_bins/
         fi
         cd output_bins
-        zip -r9 ../NetHunter-Kernel-Gemini-Raw-Files.zip *
+        zip -r9 ../NetHunter-Kernel-Gemini.zip *
 
     - name: Upload Raw Kernel Zip
       if: success()
       uses: actions/upload-artifact@v4
       with:
         name: NetHunter-Kernel-Mi5-Raw-Files
-        path: NetHunter-Kernel-Gemini-Raw-Files.zip
+        path: NetHunter-Kernel-Gemini.zip
