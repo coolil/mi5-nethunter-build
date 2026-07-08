@@ -40,25 +40,29 @@ jobs:
         export CLANG_ARGS="CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-"
         
         # =========================================================================
-        # FIX ERROR COMPILER: CAMERA, BLUETOOTH & WI-FI PATCHES
+        # FIX ERROR COMPILER: CAMERA, BLUETOOTH, MHI & WI-FI PATCHES
         # =========================================================================
         # A. Perbaikan Driver Kamera Qualcomm (Ubah <angled> menjadi "quotes")
         sed -i 's|<msm_camera_tz_util.h>|"msm_camera_tz_util.h"|g' drivers/media/platform/msm/camera_v2/common/cam_smmu_api.c
         
+        # B. Perbaikan Driver MHI Qualcomm (Ubah <angled> menjadi "quotes")
+        sed -i 's|<mhi_sys.h>|"mhi_sys.h"|g' drivers/platform/msm/mhi/mhi_ssr.c
+        sed -i 's|<mhi.h>|"mhi.h"|g' drivers/platform/msm/mhi/mhi_ssr.c
+        
         # Singkirkan DTS Referensi Otomotif yang Cacat dari Antrean Build
         sed -i '/apq8096-v3-pmi8996-mdm9x55-i2s-mtp.dtb/d' arch/arm64/boot/dts/qcom/Makefile
         
-        # B. Sapu Bersih Header Bluetooth Qualcomm Angled Brackets
+        # C. Sapu Bersih Header Bluetooth Qualcomm Angled Brackets
         sed -i 's|<btfm_slim.h>|"btfm_slim.h"|g' drivers/bluetooth/*.[ch]
         sed -i 's|<btfm_slim_wcn3990.h>|"btfm_slim_wcn3990.h"|g' drivers/bluetooth/*.[ch]
         sed -i 's|<btfm_slim.h>|"btfm_slim.h"|g' drivers/bluetooth/btfm_slim_codec.c
         sed -i 's/spin_lock_init(&hu->rx_lock);/\/\/ spin_lock_init(\&hu->rx_lock);/g' drivers/bluetooth/hci_ldisc.c
         
-        # C. Penyelarasan Pita Wi-Fi Subsistem mac80211 & Driver Internal Atheros (Ath)
+        # D. Penyelarasan Pita Wi-Fi Subsistem mac80211 & Driver Internal Atheros (Ath)
         sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' net/mac80211/*.c
         sed -i 's/IEEE80211_BAND_2GHZ/NL80211_BAND_2GHZ/g' drivers/net/wireless/ath/regd.c
         
-        # D. Penyelarasan Penuh Driver Eksternal Realtek (RTL8188EUS TP-Link) ke Standardisasi Android 15
+        # E. Penyelarasan Penuh Driver Eksternal Realtek (RTL8188EUS TP-Link) ke Standardisasi Android 15
         sed -i 's/IEEE80211_BAND_2GHZ/NL80211_BAND_2GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.c
         sed -i 's/IEEE80211_BAND_5GHZ/NL80211_BAND_5GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.c
         sed -i 's/IEEE80211_NUM_BANDS/(NL80211_BAND_60GHZ + 1)/g' drivers/net/wireless/rtl8188eus/os_dep/linux/wifi_regd.c
@@ -217,6 +221,7 @@ jobs:
                         -I$GITHUB_WORKSPACE/drivers/net/ethernet/msm \
                         -I$GITHUB_WORKSPACE/drivers/platform/msm/ipa/ipa_v2 \
                         -I$GITHUB_WORKSPACE/drivers/platform/msm/ipa/ipa_v3 \
+                        -I$GITHUB_WORKSPACE/drivers/platform/msm/mhi \
                         -I."
                         
         make $CLANG_ARGS KCFLAGS="$KCFLAGS" -j$(nproc)
