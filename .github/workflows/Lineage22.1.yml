@@ -5,7 +5,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     env:
       ARCH: arm64
       SUBARCH: arm64
@@ -37,8 +37,7 @@ jobs:
 
     - name: Configure & Inject NetHunter Features
       run: |
-        # FIX DEFINITIF: Memaksa HOSTLD menggunakan linker bawaan Ubuntu 24.04 untuk melompati eror .relr.dyn
-        export CLANG_ARGS="CC=clang HOSTLD=ld CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-"
+        export CLANG_ARGS="CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-"
         
         # 1. Muat konfigurasi dasar HP menggunakan arsitektur Clang LLVM
         make $CLANG_ARGS gemini_defconfig
@@ -152,7 +151,7 @@ jobs:
 
     - name: Compile Kernel (Strict Mode via Proton Clang)
       run: |
-        export CLANG_ARGS="CC=clang HOSTLD=ld CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-"
+        export CLANG_ARGS="CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-"
         export KCFLAGS="-I$GITHUB_WORKSPACE/drivers/gpu/msm \
                         -I$GITHUB_WORKSPACE/drivers/soc/qcom \
                         -I$GITHUB_WORKSPACE/sound/soc/msm \
