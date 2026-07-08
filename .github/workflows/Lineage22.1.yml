@@ -17,17 +17,21 @@ jobs:
         sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev bison flex libelf-dev
         sudo apt-get install -y unzip p7zip-full wget git libgmp-dev libmpfr-dev libmpc-dev
 
-    - name: Clone Kernel Source
+    - name: Clone Kernel Source (Official LineageOS 22.1)
       run: |
-        git clone --depth=1 -b twelve-4.4-inline https://github.com/B--B/Gemini-B--B-Kernel.git .
+        # Menggunakan repositori resmi dan branch lineage-22.1 (Android 15)
+        git clone --depth=1 -b lineage-22.1 https://github.com/LineageOS/android_kernel_xiaomi_msm8996.git .
 
-    - name: Clone Toolchains (Linaro GCC 7.5 Stable Mirror)
+    - name: Clone Google Clang & Toolchains (AOSP Modern Standard)
       run: |
         cd ..
-        # Menarik compiler versi 7.5 untuk melewati proteksi minimum GCC 5.1
-        git clone --depth=1 https://github.com/Krypton-Project/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-gnu-7.x.git gcc64
-        git clone --depth=1 https://github.com/Krypton-Project/android_prebuilts_gcc_linux-x86_arm_arm-linux-gnueabi-7.x.git gcc32
+        # Mendownload Clang modern dan GCC pembantu langsung dari mirror tepercaya LineageOS
+        git clone --depth=1 https://github.com/LineageOS/android_prebuilts_clang_host_linux-x86.git clang
+        git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9.git gcc64
+        git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-linux-androideabi-4.9.git gcc32
         
+        # Daftarkan jalur biner ke sistem utama secara absolut
+        echo "$GITHUB_WORKSPACE/../clang/clang-r416183b1/bin" >> $GITHUB_PATH
         echo "$GITHUB_WORKSPACE/../gcc64/bin" >> $GITHUB_PATH
         echo "$GITHUB_WORKSPACE/../gcc32/bin" >> $GITHUB_PATH
 
@@ -39,10 +43,13 @@ jobs:
 
     - name: Configure & Inject NetHunter Features
       run: |
-        # 1. Menggunakan prefix target kompilasi GNU standar (Linaro)
-        make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- gemini_defconfig
+        # Variabel Compiler untuk Clang LLVM
+        export CLANG_ARGS="CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-"
         
-        # 2. Matikan LTO agar kompatibel dengan GCC
+        # 1. Muat konfigurasi dasar bawaan Xiaomi Mi 5 menggunakan Clang
+        make $CLANG_ARGS gemini_defconfig
+        
+        # 2. Atur LTO sesuai standardisasi Clang
         ./scripts/config --disable CONFIG_LTO_CLANG
         ./scripts/config --disable CONFIG_INPUT_DRV2604
 
@@ -146,11 +153,12 @@ jobs:
         ./scripts/config --set-val CONFIG_DVB_SI2168 y
         ./scripts/config --set-val CONFIG_DVB_ZD1301_DEMOD y
 
-        # Sinkronisasi konfigurasi otomatis secara aman
-        make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- olddefconfig
+        # Sinkronisasi konfigurasi secara aman via Clang
+        make $CLANG_ARGS olddefconfig
 
-    - name: Compile Kernel (Strict Mode)
+    - name: Compile Kernel (Strict Mode via Clang)
       run: |
+        export CLANG_ARGS="CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi-"
         export KCFLAGS="-I$GITHUB_WORKSPACE/drivers/gpu/msm \
                         -I$GITHUB_WORKSPACE/drivers/soc/qcom \
                         -I$GITHUB_WORKSPACE/sound/soc/msm \
@@ -162,7 +170,7 @@ jobs:
                         -I$GITHUB_WORKSPACE/drivers/net/ethernet/msm \
                         -I."
                         
-        make CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- KCFLAGS="$KCFLAGS" -j$(nproc)
+        make $CLANG_ARGS KCFLAGS="$KCFLAGS" -j$(nproc)
 
     - name: Package Raw Bins
       run: |
