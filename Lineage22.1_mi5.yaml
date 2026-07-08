@@ -1,0 +1,184 @@
+name: Build Mi 5 NetHunter Kernel Super - Tahap 34 PERFECT FIX
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+    env:
+      ARCH: arm64
+      SUBARCH: arm64
+
+    steps:
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev bison flex libelf-dev
+        sudo apt-get install -y unzip p7zip-full wget git libgmp-dev libmpfr-dev libmpc-dev
+
+    - name: Clone Toolchain (Google GCC 4.9 Prebuilts)
+      run: |
+        mkdir toolchains
+        cd toolchains
+        git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 aarch64-4.9
+        git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 arm-4.9
+        echo "$GITHUB_WORKSPACE/toolchains/aarch64-4.9/bin" >> $GITHUB_PATH
+        echo "$GITHUB_WORKSPACE/toolchains/arm-4.9/bin" >> $GITHUB_PATH
+
+    - name: Clone Kernel Source
+      run: |
+        # Menggunakan repositori yang stabil untuk gemini 4.4
+        git clone --depth=1 -b twelve-4.4-inline https://github.com/B--B/Gemini-B--B-Kernel.git .
+
+    - name: Clone External Driver RTL8188EUS (TP-Link v2/v3)
+      run: |
+        git clone https://github.com/aircrack-ng/rtl8188eus.git drivers/net/wireless/rtl8188eus
+        echo "obj-\$(CONFIG_RTL8188EU) += rtl8188eus/" >> drivers/net/wireless/Makefile
+        echo 'source "drivers/net/wireless/rtl8188eus/Kconfig"' >> drivers/net/wireless/Kconfig
+
+    - name: Configure & Inject NetHunter Features
+      run: |
+        # 1. Muat konfigurasi dasar HP (Xiaomi Mi 5 - gemini)
+        make aarch64-linux-android- gemini_defconfig
+        
+        # 2. Matikan LTO agar kompatibel dengan GCC bawaan
+        ./scripts/config --disable CONFIG_LTO_CLANG
+        ./scripts/config --disable CONFIG_INPUT_DRV2604
+
+        # 3. Fitur Utama NetHunter & USB Gadget (FONDASI HID / BADUSB)
+        ./scripts/config --enable CONFIG_USB_GADGET
+        ./scripts/config --enable CONFIG_USB_CONFIGFS
+        ./scripts/config --enable CONFIG_USB_CONFIGFS_F_HID
+        ./scripts/config --enable CONFIG_USB_CONFIGFS_F_MASS_STORAGE
+        ./scripts/config --set-val CONFIG_USB_F_HID_NUM_COMP_COMMANDS 4
+        ./scripts/config --enable CONFIG_PACKET
+        ./scripts/config --enable CONFIG_NETFILTER
+        
+        # 4. Fondasi Loadable Module Support
+        ./scripts/config --enable CONFIG_MODULES
+        ./scripts/config --enable CONFIG_MODULE_UNLOAD
+        ./scripts/config --enable CONFIG_MODULE_FORCE_UNLOAD
+        ./scripts/config --enable CONFIG_MODVERSIONS
+
+        # 5. Fondasi Wireless Mode Monitor & Injection
+        ./scripts/config --enable CONFIG_USB_NET_RNDIS_WLAN
+        ./scripts/config --enable CONFIG_WIRELESS
+        ./scripts/config --enable CONFIG_CFG80211
+        ./scripts/config --enable CONFIG_CFG80211_WEXT
+        ./scripts/config --enable CONFIG_MAC80211
+        ./scripts/config --enable CONFIG_MAC80211_LEDS
+        ./scripts/config --enable CONFIG_MAC80211_MESH
+        ./scripts/config --enable CONFIG_WLAN
+        
+        # [FONDASI BLUETOOTH UNTUK NETHUNTER CHROOT]
+        ./scripts/config --enable CONFIG_BT
+        ./scripts/config --enable CONFIG_BT_RFCOMM
+        ./scripts/config --enable CONFIG_BT_RFCOMM_TTY
+        ./scripts/config --enable CONFIG_BT_BNEP
+        ./scripts/config --enable CONFIG_BT_BNEP_MC_FILTER
+        ./scripts/config --enable CONFIG_BT_BNEP_PROTO_FILTER
+        ./scripts/config --enable CONFIG_BT_HIDP
+        ./scripts/config --enable CONFIG_BT_HCIUART
+        ./scripts/config --enable CONFIG_BT_HCIUART_H4
+        ./scripts/config --enable CONFIG_BT_HCIUART_IBS
+        ./scripts/config --enable CONFIG_BT_HCIBTUSB
+        ./scripts/config --enable CONFIG_BT_HCIBTUSB_BCM
+        ./scripts/config --enable CONFIG_BT_HCIBTUSB_RTL
+        ./scripts/config --enable CONFIG_BT_HCIBCM203X
+        ./scripts/config --enable CONFIG_BT_HCIBPA10X
+        ./scripts/config --enable CONFIG_BT_HCIBFUSB
+        ./scripts/config --enable CONFIG_BT_HCIVHCI
+
+        # 6. USB Network Adapters & Modems
+        ./scripts/config --enable CONFIG_USB_NET_DRIVERS
+        ./scripts/config --enable CONFIG_USB_RTL8150
+        ./scripts/config --enable CONFIG_USB_RTL8152
+        ./scripts/config --enable CONFIG_USB_ACM
+        
+        # 7. Driver Target Wireless Eksternal (Built-in '=y')
+        ./scripts/config --enable CONFIG_WLAN_VENDOR_ATH
+        ./scripts/config --set-val CONFIG_ATH9K_HTC y
+        ./scripts/config --set-val CONFIG_CARL9170 y
+        ./scripts/config --set-val CONFIG_ATH6KL y
+        ./scripts/config --set-val CONFIG_ATH6KL_USB y
+        ./scripts/config --enable CONFIG_WLAN_VENDOR_MEDIATEK
+        ./scripts/config --set-val CONFIG_MT7601U y
+        ./scripts/config --enable CONFIG_WLAN_VENDOR_RALINK
+        ./scripts/config --set-val CONFIG_RT2X00 y
+        ./scripts/config --set-val CONFIG_RT2500USB y
+        ./scripts/config --set-val CONFIG_RT73USB y
+        ./scripts/config --set-val CONFIG_RT2800USB y
+        ./scripts/config --set-val CONFIG_RT2800USB_RT33XX y
+        ./scripts/config --set-val CONFIG_RT2800USB_RT35XX y
+        ./scripts/config --set-val CONFIG_RT2800USB_RT3573 y
+        ./scripts/config --set-val CONFIG_RT2800USB_RT53XX y
+        ./scripts/config --set-val CONFIG_RT2800USB_RT55XX y
+        ./scripts/config --set-val CONFIG_RT2800USB_UNKNOWN y
+        ./scripts/config --enable CONFIG_WLAN_VENDOR_REALTEK
+        ./scripts/config --set-val CONFIG_RTL8188EU y
+        ./scripts/config --set-val CONFIG_RTL8187 y
+        ./scripts/config --set-val CONFIG_RTL_CARDS y
+        ./scripts/config --set-val CONFIG_RTL8192CU y
+        ./scripts/config --set-val CONFIG_RTL8XXXU_UNTESTED y
+        ./scripts/config --enable CONFIG_WLAN_VENDOR_ZYDAS
+        ./scripts/config --set-val CONFIG_USB_ZD1201 y
+        ./scripts/config --set-val CONFIG_ZD1211RW y
+        
+        # FIX WIFI INTERNAL MI 5
+        ./scripts/config --disable CONFIG_PRIMA_WLAN_MONITOR
+        ./scripts/config --enable CONFIG_CNSS
+        ./scripts/config --set-val CONFIG_QCA_CLD_WLAN y
+        ./scripts/config --set-val CONFIG_WLAN_FEATURE_11W y
+
+        # 8. Fondasi Software Defined Radio (SDR)
+        ./scripts/config --enable CONFIG_MEDIA_SUPPORT
+        ./scripts/config --enable CONFIG_MEDIA_DIGITAL_TV_SUPPORT
+        ./scripts/config --enable CONFIG_MEDIA_SDR_SUPPORT
+        ./scripts/config --enable CONFIG_MEDIA_USB_SUPPORT
+        ./scripts/config --set-val CONFIG_USB_AIRSPY y
+        ./scripts/config --set-val CONFIG_USB_HACKRF y
+        ./scripts/config --set-val CONFIG_USB_MSI2500 y
+        ./scripts/config --disable CONFIG_MEDIA_SUBDRV_AUTOSELECT
+        ./scripts/config --set-val CONFIG_DVB_RTL2830 y
+        ./scripts/config --set-val CONFIG_DVB_RTL2832 y
+        ./scripts/config --set-val CONFIG_DVB_RTL2832_SDR y
+        ./scripts/config --set-val CONFIG_DVB_SI2168 y
+        ./scripts/config --set-val CONFIG_DVB_ZD1301_DEMOD y
+
+        # Keterangan di bawah ini sudah dijadikan komentar agar tidak memicu eror bash
+        # Sinkronisasi konfigurasi otomatis secara aman
+        make CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- olddefconfig
+
+    - name: Compile Kernel (Strict Mode)
+      run: |
+        export KCFLAGS="-I$GITHUB_WORKSPACE/drivers/gpu/msm \
+                        -I$GITHUB_WORKSPACE/drivers/soc/qcom \
+                        -I$GITHUB_WORKSPACE/sound/soc/msm \
+                        -I$GITHUB_WORKSPACE/sound/soc/msm/qdsp6v2 \
+                        -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/isp \
+                        -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/sensor \
+                        -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/sensor/io \
+                        -I$GITHUB_WORKSPACE/drivers/misc \
+                        -I$GITHUB_WORKSPACE/drivers/net/ethernet/msm \
+                        -I."
+                        
+        make CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- KCFLAGS="$KCFLAGS" -j$(nproc)
+
+    - name: Package Raw Bins
+      run: |
+        mkdir output_bins
+        if [ -f arch/arm64/boot/Image.gz-dtb ]; then
+          cp arch/arm64/boot/Image.gz-dtb ./output_bins/
+        elif [ -f arch/arm64/boot/Image.gz ]; then
+          cp arch/arm64/boot/Image.gz ./output_bins/
+        fi
+        cd output_bins
+        zip -r9 ../NetHunter-Kernel-Gemini-Raw-Files.zip *
+
+    - name: Upload Raw Kernel Zip
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: NetHunter-Kernel-Mi5-Raw-Files
+        path: NetHunter-Kernel-Gemini-Raw-Files.zip
