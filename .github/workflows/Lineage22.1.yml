@@ -17,19 +17,20 @@ jobs:
         sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev bison flex libelf-dev
         sudo apt-get install -y unzip p7zip-full wget git libgmp-dev libmpfr-dev libmpc-dev
 
-    - name: Clone Toolchain (Google GCC 4.9 Prebuilts)
-      run: |
-        mkdir toolchains
-        cd toolchains
-        git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 aarch64-4.9
-        git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 arm-4.9
-        echo "$GITHUB_WORKSPACE/toolchains/aarch64-4.9/bin" >> $GITHUB_PATH
-        echo "$GITHUB_WORKSPACE/toolchains/arm-4.9/bin" >> $GITHUB_PATH
-
     - name: Clone Kernel Source
       run: |
-        # Menggunakan repositori yang stabil untuk gemini 4.4
+        # DI-CLONE PERTAMA KALI: Memastikan folder '.' kosong bersih agar tidak crash (Exit Code 128)
         git clone --depth=1 -b twelve-4.4-inline https://github.com/B--B/Gemini-B--B-Kernel.git .
+
+    - name: Clone Toolchain (Google GCC 4.9 Prebuilts)
+      run: |
+        # Folder toolchain dibuat di dalam sub-folder terpisah agar tidak bentrok dengan Git kernel
+        mkdir -p toolchains_gcc
+        cd toolchains_gcc
+        git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 aarch64-4.9
+        git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 arm-4.9
+        echo "$GITHUB_WORKSPACE/toolchains_gcc/aarch64-4.9/bin" >> $GITHUB_PATH
+        echo "$GITHUB_WORKSPACE/toolchains_gcc/arm-4.9/bin" >> $GITHUB_PATH
 
     - name: Clone External Driver RTL8188EUS (TP-Link v2/v3)
       run: |
@@ -146,7 +147,6 @@ jobs:
         ./scripts/config --set-val CONFIG_DVB_SI2168 y
         ./scripts/config --set-val CONFIG_DVB_ZD1301_DEMOD y
 
-        # Keterangan di bawah ini sudah dijadikan komentar agar tidak memicu eror bash
         # Sinkronisasi konfigurasi otomatis secara aman
         make CROSS_COMPILE=aarch64-linux-android- CROSS_COMPILE_ARM32=arm-linux-androideabi- olddefconfig
 
