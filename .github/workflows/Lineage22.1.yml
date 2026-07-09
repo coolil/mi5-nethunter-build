@@ -1,4 +1,4 @@
-name: Build Mi 5 NetHunter lineageos22.1
+name: Build Mi 5 NetHunter lineageos22.2
 
 on:
   workflow_dispatch:
@@ -11,68 +11,68 @@ jobs:
       SUBARCH: arm64
 
     steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 1
+
     - name: Install Dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev bison flex libelf-dev
         sudo apt-get install -y unzip p7zip-full wget git libgmp-dev libmpfr-dev libmpc-dev
+        sudo apt-get install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi curl
 
-    - name: Clone Kernel Source (Official LineageOS 22.1)
+    - name: Clone Kernel Source (Official LineageOS 22.2)
       run: |
-        git clone --depth=1 -b lineage-22.1 https://github.com/LineageOS/android_kernel_xiaomi_msm8996.git .
+        git clone --depth=1 -b lineage-22.2 https://github.com/LineageOS/android_kernel_xiaomi_msm8996.git kernel_workspace
 
-    - name: Download & Extract Proton Clang (Anti-Block Solution)
+    - name: Download & Setup Neutron Clang (Modern Toolchain)
       run: |
-        cd ..
-        wget -q https://github.com/kdrag0n/proton-clang/archive/refs/heads/master.zip -O clang.zip
-        unzip -q clang.zip
-        mv proton-clang-master clang
-        echo "$GITHUB_WORKSPACE/../clang/bin" >> $GITHUB_PATH
+        mkdir -p $GITHUB_WORKSPACE/clang
+        cd $GITHUB_WORKSPACE/clang
+        curl -LO "https://raw.githubusercontent.com/Neutron-Toolchains/antman/main/antman"
+        chmod +x antman
+        ./antman -S
+        ./antman --patch=glibc
+        echo "$GITHUB_WORKSPACE/clang/bin" >> $GITHUB_PATH
 
-    - name: Clone External Driver RTL8188EUS (TP-Link v2/v3)
+    - name: Clone External Driver RTL8188EUS (TP-Link)
       run: |
+        cd kernel_workspace
         git clone https://github.com/aircrack-ng/rtl8188eus.git drivers/net/wireless/rtl8188eus
         echo "obj-\$(CONFIG_RTL8188EU) += rtl8188eus/" >> drivers/net/wireless/Makefile
         echo 'source "drivers/net/wireless/rtl8188eus/Kconfig"' >> drivers/net/wireless/Kconfig
 
     - name: Configure & Inject NetHunter Features
       run: |
-        export CLANG_ARGS="CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-"
+        cd kernel_workspace
+        export CLANG_ARGS="CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1 LLVM_IAS=1"
         
         # =========================================================================
         # FIX ERROR COMPILER: CAMERA, BLUETOOTH, MHI & WI-FI PATCHES
         # =========================================================================
-        # A. Perbaikan Driver Kamera Qualcomm (Ubah <angled> menjadi "quotes")
         sed -i 's|<msm_camera_tz_util.h>|"msm_camera_tz_util.h"|g' drivers/media/platform/msm/camera_v2/common/cam_smmu_api.c
-        
-        # B. Perbaikan Driver MHI Qualcomm (Ubah <angled> menjadi "quotes")
         sed -i 's|<mhi_sys.h>|"mhi_sys.h"|g' drivers/platform/msm/mhi/mhi_ssr.c
         sed -i 's|<mhi.h>|"mhi.h"|g' drivers/platform/msm/mhi/mhi_ssr.c
-        
-        # Singkirkan DTS Referensi Otomotif yang Cacat dari Antrean Build
         sed -i '/apq8096-v3-pmi8996-mdm9x55-i2s-mtp.dtb/d' arch/arm64/boot/dts/qcom/Makefile
-        
-        # C. Sapu Bersih Header Bluetooth Qualcomm Angled Brackets
         sed -i 's|<btfm_slim.h>|"btfm_slim.h"|g' drivers/bluetooth/*.[ch]
         sed -i 's|<btfm_slim_wcn3990.h>|"btfm_slim_wcn3990.h"|g' drivers/bluetooth/*.[ch]
         sed -i 's|<btfm_slim.h>|"btfm_slim.h"|g' drivers/bluetooth/btfm_slim_codec.c
         sed -i 's/spin_lock_init(&hu->rx_lock);/\/\/ spin_lock_init(\&hu->rx_lock);/g' drivers/bluetooth/hci_ldisc.c
-        
-        # D. Penyelarasan Pita Wi-Fi Subsistem mac80211 & Driver Internal Atheros (Ath)
         sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' net/mac80211/*.c
         sed -i 's/IEEE80211_BAND_2GHZ/NL80211_BAND_2GHZ/g' drivers/net/wireless/ath/regd.c
         
-        # E. Penyelarasan Penuh Driver Eksternal Realtek (RTL8188EUS TP-Link) ke Standardisasi Android 15
+        # Penyelarasan Penuh RTL8188EUS ke Android 15
         sed -i 's/IEEE80211_BAND_2GHZ/NL80211_BAND_2GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.c
         sed -i 's/IEEE80211_BAND_5GHZ/NL80211_BAND_5GHZ/g' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.c
         sed -i 's/IEEE80211_NUM_BANDS/(NL80211_BAND_60GHZ + 1)/g' drivers/net/wireless/rtl8188eus/os_dep/linux/wifi_regd.c
-        
         sed -i '/#define NL80211_BAND_2GHZ/d' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
         sed -i '/#define NL80211_BAND_5GHZ/d' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
         sed -i '/#define NUM_NL80211_BANDS/d' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
 
         # =========================================================================
-        # INJEKSI BYPASS QUALCOMM QCACLD MONITOR MODE (Official LineageOS Path)
+        # INJEKSI BYPASS QUALCOMM QCACLD MONITOR MODE (WIFI INTERNAL)
         # =========================================================================
         sed -i 's/if ((pAdapter->device_mode == WLAN_HDD_INFRA_STATION) ||/if ((pAdapter->device_mode == WLAN_HDD_INFRA_STATION) || (pAdapter->device_mode == WLAN_HDD_MONITOR) ||/g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c
         sed -i '/case NL80211_IFTYPE_AP:/i \        case NL80211_IFTYPE_MONITOR: wdev->iftype = type; pAdapter->device_mode = WLAN_HDD_MONITOR; goto done;' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c
@@ -80,19 +80,21 @@ jobs:
         sed -i 's/if ((pAdapter->device_mode == WLAN_HDD_INFRA_STATION) ||/if ((pAdapter->device_mode == WLAN_HDD_INFRA_STATION) || pAdapter->device_mode == WLAN_HDD_MONITOR ||/g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_main.c
         
         # =========================================================================
+        # MERGE DEFCONFIG XIAOMI MI 5 (GEMINI)
+        # =========================================================================
+        make $CLANG_ARGS vendor/xiaomi/mi8996_defconfig
+        cat arch/arm64/configs/vendor/xiaomi/gemini.config >> .config
+        make $CLANG_ARGS olddefconfig
         
-        # 2. Muat konfigurasi dasar msm-perf_defconfig
-        make $CLANG_ARGS msm-perf_defconfig
-        
-        # 3. FIX EROR SCHED_TUNE
+        # =========================================================================
+        # INJEKSI FITUR NETHUNTER & OPTIMASI
+        # =========================================================================
         ./scripts/config --enable CONFIG_SCHED_TUNE
         ./scripts/config --enable CONFIG_CGROUPS
         ./scripts/config --enable CONFIG_CGROUP_SCHEDTUNE
-
-        # 4. Atur konfigurasi keamanan & optimasi compiler
         ./scripts/config --disable CONFIG_LTO_CLANG
         ./scripts/config --disable CONFIG_INPUT_DRV2604
-
+        
         # === OPTIMASI PERFORMA & RAM MI 5 (SD820) ===
         ./scripts/config --enable CONFIG_ZSMALLOC
         ./scripts/config --enable CONFIG_ZRAM
@@ -104,7 +106,7 @@ jobs:
         ./scripts/config --set-val CONFIG_IOSCHED_BFQ y
         ./scripts/config --enable CONFIG_CGROUP_BFQIO
 
-        # 5. Fitur Utama NetHunter & USB Gadget (FONDASI HID / BADUSB)
+        # === FONDASI NETHUNTER ===
         ./scripts/config --enable CONFIG_USB_GADGET
         ./scripts/config --enable CONFIG_USB_CONFIGFS
         ./scripts/config --enable CONFIG_USB_CONFIGFS_F_HID
@@ -112,14 +114,10 @@ jobs:
         ./scripts/config --set-val CONFIG_USB_F_HID_NUM_COMP_COMMANDS 4
         ./scripts/config --enable CONFIG_PACKET
         ./scripts/config --enable CONFIG_NETFILTER
-        
-        # 6. Fondasi Loadable Module Support
         ./scripts/config --enable CONFIG_MODULES
         ./scripts/config --enable CONFIG_MODULE_UNLOAD
         ./scripts/config --enable CONFIG_MODULE_FORCE_UNLOAD
         ./scripts/config --enable CONFIG_MODVERSIONS
-
-        # 7. Fondasi Wireless Mode Monitor & Injection
         ./scripts/config --enable CONFIG_USB_NET_RNDIS_WLAN
         ./scripts/config --enable CONFIG_WIRELESS
         ./scripts/config --enable CONFIG_CFG80211
@@ -129,7 +127,7 @@ jobs:
         ./scripts/config --enable CONFIG_MAC80211_MESH
         ./scripts/config --enable CONFIG_WLAN
         
-        # [FONDASI BLUETOOTH UNTUK NETHUNTER CHROOT]
+        # === BLUETOOTH & ADAPTER ===
         ./scripts/config --enable CONFIG_BT
         ./scripts/config --enable CONFIG_BT_RFCOMM
         ./scripts/config --enable CONFIG_BT_RFCOMM_TTY
@@ -147,14 +145,12 @@ jobs:
         ./scripts/config --enable CONFIG_BT_HCIBPA10X
         ./scripts/config --enable CONFIG_BT_HCIBFUSB
         ./scripts/config --enable CONFIG_BT_HCIVHCI
-
-        # 8. USB Network Adapters & Modems
         ./scripts/config --enable CONFIG_USB_NET_DRIVERS
         ./scripts/config --enable CONFIG_USB_RTL8150
         ./scripts/config --enable CONFIG_USB_RTL8152
         ./scripts/config --enable CONFIG_USB_ACM
         
-        # 9. Driver Target Wireless Eksternal (Built-in '=y')
+        # === DRIVER WIFI EXTERNAL ===
         ./scripts/config --enable CONFIG_WLAN_VENDOR_ATH
         ./scripts/config --set-val CONFIG_ATH9K_HTC y
         ./scripts/config --set-val CONFIG_CARL9170 y
@@ -183,13 +179,13 @@ jobs:
         ./scripts/config --set-val CONFIG_USB_ZD1201 y
         ./scripts/config --set-val CONFIG_ZD1211RW y
         
-        # FIX WIFI INTERNAL MI 5
+        # === FIX WIFI INTERNAL ===
         ./scripts/config --disable CONFIG_PRIMA_WLAN_MONITOR
         ./scripts/config --enable CONFIG_CNSS
         ./scripts/config --set-val CONFIG_QCA_CLD_WLAN y
         ./scripts/config --set-val CONFIG_WLAN_FEATURE_11W y
-
-        # 10. Fondasi Software Defined Radio (SDR)
+        
+        # === SDR (SOFTWARE DEFINED RADIO) ===
         ./scripts/config --enable CONFIG_MEDIA_SUPPORT
         ./scripts/config --enable CONFIG_MEDIA_DIGITAL_TV_SUPPORT
         ./scripts/config --enable CONFIG_MEDIA_SDR_SUPPORT
@@ -204,42 +200,42 @@ jobs:
         ./scripts/config --set-val CONFIG_DVB_SI2168 y
         ./scripts/config --set-val CONFIG_DVB_ZD1301_DEMOD y
 
-        # Sinkronisasi konfigurasi via Proton Clang lingkungan steril
         make $CLANG_ARGS olddefconfig
 
-    - name: Compile Kernel (Strict Mode via Proton Clang)
+    - name: Compile Kernel
       run: |
-        export CLANG_ARGS="CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-"
-        export KCFLAGS="-I$GITHUB_WORKSPACE/drivers/gpu/msm \
-                        -I$GITHUB_WORKSPACE/drivers/soc/qcom \
-                        -I$GITHUB_WORKSPACE/sound/soc/msm \
-                        -I$GITHUB_WORKSPACE/sound/soc/msm/qdsp6v2 \
-                        -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/isp \
-                        -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/sensor \
-                        -I$GITHUB_WORKSPACE/drivers/media/platform/msm/camera_v2/sensor/io \
-                        -I$GITHUB_WORKSPACE/drivers/misc \
-                        -I$GITHUB_WORKSPACE/drivers/net/ethernet/msm \
-                        -I$GITHUB_WORKSPACE/drivers/platform/msm/ipa/ipa_v2 \
-                        -I$GITHUB_WORKSPACE/drivers/platform/msm/ipa/ipa_v3 \
-                        -I$GITHUB_WORKSPACE/drivers/platform/msm/mhi \
-                        -I."
+        cd kernel_workspace
+        export CLANG_ARGS="CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1 LLVM_IAS=1"
+        export KCFLAGS="-I$GITHUB_WORKSPACE/kernel_workspace/drivers/gpu/msm -I$GITHUB_WORKSPACE/kernel_workspace/drivers/soc/qcom -I$GITHUB_WORKSPACE/kernel_workspace/sound/soc/msm -I$GITHUB_WORKSPACE/kernel_workspace/sound/soc/msm/qdsp6v2 -I$GITHUB_WORKSPACE/kernel_workspace/drivers/media/platform/msm/camera_v2/isp -I$GITHUB_WORKSPACE/kernel_workspace/drivers/media/platform/msm/camera_v2/sensor -I$GITHUB_WORKSPACE/kernel_workspace/drivers/media/platform/msm/camera_v2/sensor/io -I$GITHUB_WORKSPACE/kernel_workspace/drivers/misc -I$GITHUB_WORKSPACE/kernel_workspace/drivers/net/ethernet/msm -I$GITHUB_WORKSPACE/kernel_workspace/drivers/platform/msm/ipa/ipa_v2 -I$GITHUB_WORKSPACE/kernel_workspace/drivers/platform/msm/ipa/ipa_v3 -I$GITHUB_WORKSPACE/kernel_workspace/drivers/platform/msm/mhi -I."
                         
         make $CLANG_ARGS KCFLAGS="$KCFLAGS" -j$(nproc)
 
-    - name: Package Raw Bins
+    - name: Repack boot.img using Magiskboot
       run: |
-        mkdir output_bins
-        if [ -f arch/arm64/boot/Image.gz-dtb ]; then
-          cp arch/arm64/boot/Image.gz-dtb ./output_bins/
-        elif [ -f arch/arm64/boot/Image.gz ]; then
-          cp arch/arm64/boot/Image.gz ./output_bins/
-        fi
-        cd output_bins
-        zip -r9 ../NetHunter-Kernel-Gemini.zip *
+        # Mengunduh Magisk untuk mengekstrak magiskboot
+        wget -q https://github.com/topjohnwu/Magisk/releases/download/v27.0/Magisk-v27.0.apk
+        unzip -q Magisk-v27.0.apk "lib/x86_64/libmagiskboot.so" -d magisk_tool
+        mv magisk_tool/lib/x86_64/libmagiskboot.so magiskboot
+        chmod +x magiskboot
 
-    - name: Upload Raw Kernel Zip
+        # Menentukan lokasi kernel hasil kompilasi
+        if [ -f kernel_workspace/arch/arm64/boot/Image.gz-dtb ]; then
+          KERNEL_FILE="kernel_workspace/arch/arm64/boot/Image.gz-dtb"
+        elif [ -f kernel_workspace/arch/arm64/boot/Image.gz ]; then
+          KERNEL_FILE="kernel_workspace/arch/arm64/boot/Image.gz"
+        else
+          echo "Build gagal: File Kernel tidak ditemukan!"
+          exit 1
+        fi
+
+        # Proses unpack boot-lineage.img bawaan dari repo dan repack dengan kernel baru
+        ./magiskboot unpack boot-lineage.img
+        cp $KERNEL_FILE kernel
+        ./magiskboot repack boot-lineage.img boot-nethunter-mi5.img
+
+    - name: Upload Repacked Boot Image
       if: success()
       uses: actions/upload-artifact@v4
       with:
-        name: NetHunter-Kernel-Mi5-Raw-Files
-        path: NetHunter-Kernel-Gemini.zip
+        name: NetHunter-Boot-Mi5
+        path: boot-nethunter-mi5.img
