@@ -50,7 +50,7 @@ jobs:
         export CLANG_ARGS="CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1 LLVM_IAS=1"
         
         # =========================================================================
-        # FIX ERROR COMPILER: CAMERA, BLUETOOTH, MHI & WI-FI PATCHES
+        # FIX ERROR COMPILER: CAMERA, BLUETOOTH, MHI, NFC & WI-FI PATCHES
         # =========================================================================
         sed -i 's|<msm_camera_tz_util.h>|"msm_camera_tz_util.h"|g' drivers/media/platform/msm/camera_v2/common/cam_smmu_api.c
         sed -i 's|<mhi_sys.h>|"mhi_sys.h"|g' drivers/platform/msm/mhi/mhi_ssr.c
@@ -60,6 +60,10 @@ jobs:
         sed -i 's|<btfm_slim_wcn3990.h>|"btfm_slim_wcn3990.h"|g' drivers/bluetooth/*.[ch]
         sed -i 's|<btfm_slim.h>|"btfm_slim.h"|g' drivers/bluetooth/btfm_slim_codec.c
         sed -i 's/spin_lock_init(&hu->rx_lock);/\/\/ spin_lock_init(\&hu->rx_lock);/g' drivers/bluetooth/hci_ldisc.c
+        
+        # [BARU] FIX ERROR COMPILER UNTUK NFC PN548
+        sed -i 's|<pn548.h>|"pn548.h"|g' drivers/nfc/pn548/pn548.c
+        
         sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' net/mac80211/*.c
         sed -i 's/IEEE80211_BAND_2GHZ/NL80211_BAND_2GHZ/g' drivers/net/wireless/ath/regd.c
         
@@ -228,10 +232,10 @@ jobs:
           exit 1
         fi
 
-        # Proses unpack boot-lineage.img bawaan dari repo dan repack dengan kernel baru
-        ./magiskboot unpack boot-lineage.img
+        # Proses unpack boot.img bawaan dari repo dan repack dengan kernel baru
+        ./magiskboot unpack boot.img
         cp $KERNEL_FILE kernel
-        ./magiskboot repack boot-lineage.img boot-nethunter-mi5.img
+        ./magiskboot repack boot.img boot-nethunter-mi5.img
 
     - name: Upload Repacked Boot Image
       if: success()
