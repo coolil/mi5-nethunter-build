@@ -19,7 +19,7 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev bison flex libelf-dev
         sudo apt-get install -y unzip p7zip-full wget git libgmp-dev libmpfr-dev libmpc-dev
-        sudo apt-get install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi curl zip
+        sudo apt-get install -y gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi curl zip python3
 
     - name: Clone Kernel Source
       run: |
@@ -48,7 +48,7 @@ jobs:
         export CLANG_ARGS="CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1 LLVM_IAS=0"
         
         # =========================================================================
-        # FIX ERROR COMPILER SECARA MANDATORY
+        # FIX ERROR COMPILER (CAMERA, BT, MHI, NFC, AUDIO)
         # =========================================================================
         sed -i 's|<msm_camera_tz_util.h>|"msm_camera_tz_util.h"|g' drivers/media/platform/msm/camera_v2/common/cam_smmu_api.c
         sed -i 's|<mhi_sys.h>|"mhi_sys.h"|g' drivers/platform/msm/mhi/mhi_ssr.c
@@ -72,7 +72,20 @@ jobs:
         sed -i '/#define NUM_NL80211_BANDS/d' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
 
         # =========================================================================
-        # INJEKSI BYPASS QUALCOMM QCACLD-2.0 MONITOR MODE (DENGAN PERBAIKAN LOGIKA KURUNG)
+        # FIX POINTER FILE-BASED 100% AMAN VIA PYTHON INLINE (Bypass Regex Sed)
+        # =========================================================================
+        python3 -c '
+file_path = "drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c"
+with open(file_path, "r") as f:
+    text = f.read()
+# Mengganti secara harfiah tanpa terpengaruh karakter khusus
+text = text.replace("&pWifiIfaceStat->ac_stats[i]", "(tpSirWifiWmmAcStat)&pWifiIfaceStat->ac_stats[i]")
+with open(file_path, "w") as f:
+    f.write(text)
+'
+
+        # =========================================================================
+        # INJEKSI BYPASS QUALCOMM QCACLD-2.0 MONITOR MODE
         # =========================================================================
         sed -i 's/pAdapter->device_mode == WLAN_HDD_INFRA_STATION/(pAdapter->device_mode == WLAN_HDD_INFRA_STATION || pAdapter->device_mode == WLAN_HDD_MONITOR)/g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c
         sed -i 's/pAdapter->device_mode == WLAN_HDD_INFRA_STATION/(pAdapter->device_mode == WLAN_HDD_INFRA_STATION || pAdapter->device_mode == WLAN_HDD_MONITOR)/g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_main.c
@@ -112,7 +125,7 @@ jobs:
         cd kernel_workspace
         export CLANG_ARGS="CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1 LLVM_IAS=0"
         
-        # [PENYESUAIAN KOMPILER] Menambahkan "-w" untuk mengabaikan seluruh warning kode lama secara global
+        # Karena kita sudah memperbaikinya langsung dari file, kita tidak membutuhkan -Wno-error=... lagi
         export KCFLAGS="-w -I$GITHUB_WORKSPACE/kernel_workspace/drivers/gpu/msm -I$GITHUB_WORKSPACE/kernel_workspace/drivers/soc/qcom -I$GITHUB_WORKSPACE/kernel_workspace/sound/soc/msm -I$GITHUB_WORKSPACE/kernel_workspace/sound/soc/msm/qdsp6v2 -I$GITHUB_WORKSPACE/kernel_workspace/drivers/media/platform/msm/camera_v2/isp -I$GITHUB_WORKSPACE/kernel_workspace/drivers/media/platform/msm/camera_v2/sensor -I$GITHUB_WORKSPACE/kernel_workspace/drivers/media/platform/msm/camera_v2/sensor/io -I$GITHUB_WORKSPACE/kernel_workspace/drivers/misc -I$GITHUB_WORKSPACE/kernel_workspace/drivers/net/ethernet/msm -I$GITHUB_WORKSPACE/kernel_workspace/drivers/platform/msm/ipa/ipa_v2 -I$GITHUB_WORKSPACE/kernel_workspace/drivers/platform/msm/ipa/ipa_v3 -I$GITHUB_WORKSPACE/kernel_workspace/drivers/platform/msm/mhi -I."
         
         # Build Kernel
