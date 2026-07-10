@@ -50,7 +50,7 @@ jobs:
         export CLANG_ARGS="CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1 LLVM_IAS=0"
         
         # =========================================================================
-        # FIX ERROR COMPILER (CAMERA, BT, MHI, NFC)
+        # FIX ERROR COMPILER (CAMERA, BT, MHI, NFC, AUDIO)
         # =========================================================================
         sed -i 's|<msm_camera_tz_util.h>|"msm_camera_tz_util.h"|g' drivers/media/platform/msm/camera_v2/common/cam_smmu_api.c
         sed -i 's|<mhi_sys.h>|"mhi_sys.h"|g' drivers/platform/msm/mhi/mhi_ssr.c
@@ -61,6 +61,9 @@ jobs:
         sed -i 's|<btfm_slim.h>|"btfm_slim.h"|g' drivers/bluetooth/btfm_slim_codec.c
         sed -i 's/spin_lock_init(&hu->rx_lock);/\/\/ spin_lock_init(\&hu->rx_lock);/g' drivers/bluetooth/hci_ldisc.c
         sed -i 's|<pn548.h>|"pn548.h"|g' drivers/nfc/pn548/pn548.c
+        
+        # Fix strict include error pada driver audio
+        sed -i 's|<device_event.h>|"device_event.h"|g' sound/soc/msm/msm8996.c
         
         # Fix RTL8188EUS untuk Android 15
         sed -i 's/IEEE80211_BAND_60GHZ/NL80211_BAND_60GHZ/g' net/mac80211/*.c
@@ -112,7 +115,9 @@ jobs:
       run: |
         cd kernel_workspace
         export CLANG_ARGS="CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1 LLVM_IAS=0"
-        export KCFLAGS="-I$GITHUB_WORKSPACE/kernel_workspace/drivers/gpu/msm -I$GITHUB_WORKSPACE/kernel_workspace/drivers/soc/qcom -I$GITHUB_WORKSPACE/kernel_workspace/sound/soc/msm/qdsp6v2 -I$GITHUB_WORKSPACE/kernel_workspace/drivers/media/platform/msm/camera_v2/isp -I$GITHUB_WORKSPACE/kernel_workspace/drivers/misc -I."
+        
+        # KCFLAGS utuh dikembalikan untuk mengatasi error msm_camera_i2c.h
+        export KCFLAGS="-I$GITHUB_WORKSPACE/kernel_workspace/drivers/gpu/msm -I$GITHUB_WORKSPACE/kernel_workspace/drivers/soc/qcom -I$GITHUB_WORKSPACE/kernel_workspace/sound/soc/msm -I$GITHUB_WORKSPACE/kernel_workspace/sound/soc/msm/qdsp6v2 -I$GITHUB_WORKSPACE/kernel_workspace/drivers/media/platform/msm/camera_v2/isp -I$GITHUB_WORKSPACE/kernel_workspace/drivers/media/platform/msm/camera_v2/sensor -I$GITHUB_WORKSPACE/kernel_workspace/drivers/media/platform/msm/camera_v2/sensor/io -I$GITHUB_WORKSPACE/kernel_workspace/drivers/misc -I$GITHUB_WORKSPACE/kernel_workspace/drivers/net/ethernet/msm -I$GITHUB_WORKSPACE/kernel_workspace/drivers/platform/msm/ipa/ipa_v2 -I$GITHUB_WORKSPACE/kernel_workspace/drivers/platform/msm/ipa/ipa_v3 -I$GITHUB_WORKSPACE/kernel_workspace/drivers/platform/msm/mhi -I."
         
         # Build Kernel
         make $CLANG_ARGS KCFLAGS="$KCFLAGS" -j$(nproc)
