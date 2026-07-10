@@ -23,7 +23,6 @@ jobs:
 
     - name: Clone Kernel Source
       run: |
-        # Menggunakan branch 22.2 sesuai dengan ROM di HP Anda
         git clone --depth=1 -b lineage-22.2 https://github.com/LineageOS/android_kernel_xiaomi_msm8996.git kernel_workspace
 
     - name: Setup Neutron Clang
@@ -46,11 +45,10 @@ jobs:
     - name: Configure & Inject NetHunter Features
       run: |
         cd kernel_workspace
-        # Mematikan LLVM_IAS untuk mencegah error assembly di kernel 4.4
         export CLANG_ARGS="CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1 LLVM_IAS=0"
         
         # =========================================================================
-        # FIX ERROR COMPILER (CAMERA, BT, MHI, NFC, AUDIO)
+        # FIX ERROR COMPILER SECARA MANDATORY
         # =========================================================================
         sed -i 's|<msm_camera_tz_util.h>|"msm_camera_tz_util.h"|g' drivers/media/platform/msm/camera_v2/common/cam_smmu_api.c
         sed -i 's|<mhi_sys.h>|"mhi_sys.h"|g' drivers/platform/msm/mhi/mhi_ssr.c
@@ -61,8 +59,6 @@ jobs:
         sed -i 's|<btfm_slim.h>|"btfm_slim.h"|g' drivers/bluetooth/btfm_slim_codec.c
         sed -i 's/spin_lock_init(&hu->rx_lock);/\/\/ spin_lock_init(\&hu->rx_lock);/g' drivers/bluetooth/hci_ldisc.c
         sed -i 's|<pn548.h>|"pn548.h"|g' drivers/nfc/pn548/pn548.c
-        
-        # Fix strict include error pada driver audio
         sed -i 's|<device_event.h>|"device_event.h"|g' sound/soc/msm/msm8996.c
         
         # Fix RTL8188EUS untuk Android 15
@@ -76,10 +72,10 @@ jobs:
         sed -i '/#define NUM_NL80211_BANDS/d' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
 
         # =========================================================================
-        # INJEKSI BYPASS QUALCOMM QCACLD-2.0 MONITOR MODE (HASIL OBSERVASI)
+        # INJEKSI BYPASS QUALCOMM QCACLD-2.0 MONITOR MODE (DENGAN PERBAIKAN LOGIKA KURUNG)
         # =========================================================================
-        sed -i 's/pAdapter->device_mode == WLAN_HDD_INFRA_STATION/pAdapter->device_mode == WLAN_HDD_INFRA_STATION || pAdapter->device_mode == WLAN_HDD_MONITOR/g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c
-        sed -i 's/pAdapter->device_mode == WLAN_HDD_INFRA_STATION/pAdapter->device_mode == WLAN_HDD_INFRA_STATION || pAdapter->device_mode == WLAN_HDD_MONITOR/g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_main.c
+        sed -i 's/pAdapter->device_mode == WLAN_HDD_INFRA_STATION/(pAdapter->device_mode == WLAN_HDD_INFRA_STATION || pAdapter->device_mode == WLAN_HDD_MONITOR)/g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c
+        sed -i 's/pAdapter->device_mode == WLAN_HDD_INFRA_STATION/(pAdapter->device_mode == WLAN_HDD_INFRA_STATION || pAdapter->device_mode == WLAN_HDD_MONITOR)/g' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_main.c
         sed -i '/case NL80211_IFTYPE_AP:/i \        case NL80211_IFTYPE_MONITOR:\n            wdev->iftype = type;\n            pAdapter->device_mode = WLAN_HDD_MONITOR;\n            goto done;' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c
         sed -i '/if (WLAN_HDD_IS_NDI(pAdapter))/i \    if (pAdapter->device_mode == WLAN_HDD_MONITOR) return 0;' drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_main.c
 
@@ -116,8 +112,8 @@ jobs:
         cd kernel_workspace
         export CLANG_ARGS="CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1 LLVM_IAS=0"
         
-        # KCFLAGS utuh dikembalikan untuk mengatasi error msm_camera_i2c.h
-        export KCFLAGS="-I$GITHUB_WORKSPACE/kernel_workspace/drivers/gpu/msm -I$GITHUB_WORKSPACE/kernel_workspace/drivers/soc/qcom -I$GITHUB_WORKSPACE/kernel_workspace/sound/soc/msm -I$GITHUB_WORKSPACE/kernel_workspace/sound/soc/msm/qdsp6v2 -I$GITHUB_WORKSPACE/kernel_workspace/drivers/media/platform/msm/camera_v2/isp -I$GITHUB_WORKSPACE/kernel_workspace/drivers/media/platform/msm/camera_v2/sensor -I$GITHUB_WORKSPACE/kernel_workspace/drivers/media/platform/msm/camera_v2/sensor/io -I$GITHUB_WORKSPACE/kernel_workspace/drivers/misc -I$GITHUB_WORKSPACE/kernel_workspace/drivers/net/ethernet/msm -I$GITHUB_WORKSPACE/kernel_workspace/drivers/platform/msm/ipa/ipa_v2 -I$GITHUB_WORKSPACE/kernel_workspace/drivers/platform/msm/ipa/ipa_v3 -I$GITHUB_WORKSPACE/kernel_workspace/drivers/platform/msm/mhi -I."
+        # [PENYESUAIAN KOMPILER] Menambahkan "-w" untuk mengabaikan seluruh warning kode lama secara global
+        export KCFLAGS="-w -I$GITHUB_WORKSPACE/kernel_workspace/drivers/gpu/msm -I$GITHUB_WORKSPACE/kernel_workspace/drivers/soc/qcom -I$GITHUB_WORKSPACE/kernel_workspace/sound/soc/msm -I$GITHUB_WORKSPACE/kernel_workspace/sound/soc/msm/qdsp6v2 -I$GITHUB_WORKSPACE/kernel_workspace/drivers/media/platform/msm/camera_v2/isp -I$GITHUB_WORKSPACE/kernel_workspace/drivers/media/platform/msm/camera_v2/sensor -I$GITHUB_WORKSPACE/kernel_workspace/drivers/media/platform/msm/camera_v2/sensor/io -I$GITHUB_WORKSPACE/kernel_workspace/drivers/misc -I$GITHUB_WORKSPACE/kernel_workspace/drivers/net/ethernet/msm -I$GITHUB_WORKSPACE/kernel_workspace/drivers/platform/msm/ipa/ipa_v2 -I$GITHUB_WORKSPACE/kernel_workspace/drivers/platform/msm/ipa/ipa_v3 -I$GITHUB_WORKSPACE/kernel_workspace/drivers/platform/msm/mhi -I."
         
         # Build Kernel
         make $CLANG_ARGS KCFLAGS="$KCFLAGS" -j$(nproc)
@@ -129,7 +125,6 @@ jobs:
       run: |
         git clone https://github.com/osm0sis/AnyKernel3.git anykernel
         
-        # Menyalin Kernel Image
         if [ -f kernel_workspace/arch/arm64/boot/Image.gz-dtb ]; then
           cp kernel_workspace/arch/arm64/boot/Image.gz-dtb anykernel/
         elif [ -f kernel_workspace/arch/arm64/boot/Image.gz ]; then
@@ -139,20 +134,15 @@ jobs:
           exit 1
         fi
         
-        # Menyalin Modul Eksternal TP-Link jika berhasil di-build
         mkdir -p anykernel/modules/system/lib/modules
         find kernel_workspace -name "8188eu.ko" -exec cp {} anykernel/modules/system/lib/modules/ \;
         
-        # Konfigurasi AnyKernel
         cd anykernel
         sed -i 's/kernel.string=ExampleKernel by osm0sis @ xda-developers/kernel.string=NetHunter Kernel for Mi 5/' anykernel.sh
         sed -i 's/do.devicecheck=1/do.devicecheck=0/' anykernel.sh
         sed -i 's/block=\/dev\/block\/platform\/omap\/omap_hsmmc.0\/by-name\/boot;/block=\/dev\/block\/bootdevice\/by-name\/boot;/' anykernel.sh
         
-        # Pembersihan folder bawaan AK3
         rm -rf ramdisk patch
-        
-        # Zip Output
         zip -r9 ../NetHunter-Kernel-Mi5-Lineage22.2.zip * -x .git README.md *placeholder
 
     - name: Upload AnyKernel3 ZIP
