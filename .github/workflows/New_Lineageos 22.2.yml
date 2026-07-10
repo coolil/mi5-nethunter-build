@@ -72,17 +72,9 @@ jobs:
         sed -i '/#define NUM_NL80211_BANDS/d' drivers/net/wireless/rtl8188eus/os_dep/linux/ioctl_cfg80211.h
 
         # =========================================================================
-        # FIX POINTER FILE-BASED 100% AMAN VIA PYTHON INLINE (Bypass Regex Sed)
+        # FIX POINTER FILE-BASED 100% AMAN VIA PYTHON INLINE ONE-LINER
         # =========================================================================
-        python3 -c '
-file_path = "drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c"
-with open(file_path, "r") as f:
-    text = f.read()
-# Mengganti secara harfiah tanpa terpengaruh karakter khusus
-text = text.replace("&pWifiIfaceStat->ac_stats[i]", "(tpSirWifiWmmAcStat)&pWifiIfaceStat->ac_stats[i]")
-with open(file_path, "w") as f:
-    f.write(text)
-'
+        python3 -c 'f="drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c"; d=open(f).read(); open(f,"w").write(d.replace("&pWifiIfaceStat->ac_stats[i]", "(tpSirWifiWmmAcStat)&pWifiIfaceStat->ac_stats[i]"))'
 
         # =========================================================================
         # INJEKSI BYPASS QUALCOMM QCACLD-2.0 MONITOR MODE
@@ -124,8 +116,6 @@ with open(file_path, "w") as f:
       run: |
         cd kernel_workspace
         export CLANG_ARGS="CC=clang CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- LLVM=1 LLVM_IAS=0"
-        
-        # Karena kita sudah memperbaikinya langsung dari file, kita tidak membutuhkan -Wno-error=... lagi
         export KCFLAGS="-w -I$GITHUB_WORKSPACE/kernel_workspace/drivers/gpu/msm -I$GITHUB_WORKSPACE/kernel_workspace/drivers/soc/qcom -I$GITHUB_WORKSPACE/kernel_workspace/sound/soc/msm -I$GITHUB_WORKSPACE/kernel_workspace/sound/soc/msm/qdsp6v2 -I$GITHUB_WORKSPACE/kernel_workspace/drivers/media/platform/msm/camera_v2/isp -I$GITHUB_WORKSPACE/kernel_workspace/drivers/media/platform/msm/camera_v2/sensor -I$GITHUB_WORKSPACE/kernel_workspace/drivers/media/platform/msm/camera_v2/sensor/io -I$GITHUB_WORKSPACE/kernel_workspace/drivers/misc -I$GITHUB_WORKSPACE/kernel_workspace/drivers/net/ethernet/msm -I$GITHUB_WORKSPACE/kernel_workspace/drivers/platform/msm/ipa/ipa_v2 -I$GITHUB_WORKSPACE/kernel_workspace/drivers/platform/msm/ipa/ipa_v3 -I$GITHUB_WORKSPACE/kernel_workspace/drivers/platform/msm/mhi -I."
         
         # Build Kernel
