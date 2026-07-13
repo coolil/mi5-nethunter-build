@@ -13,15 +13,24 @@ jobs:
 
     steps:
 
+      ###########################################################
+      # Checkout Kernel
+      ###########################################################
+
       - name: Checkout Kernel
         uses: actions/checkout@v4
         with:
           repository: LineageOS/android_kernel_xiaomi_msm8996
           ref: lineage-22.2
 
+      ###########################################################
+      # Install Packages
+      ###########################################################
+
       - name: Install Packages
         run: |
           sudo apt update
+
           sudo apt install -y \
             git \
             bc \
@@ -33,134 +42,228 @@ jobs:
             libncurses5-dev \
             python3 \
             unzip \
+            zip \
+            rsync \
+            curl \
+            wget \
+            cpio \
             gcc-aarch64-linux-gnu \
             gcc-arm-linux-gnueabi
 
+      ###########################################################
+      # Clone RTL8188EUS Aircrack
+      ###########################################################
+
       - name: Clone RTL8188EUS
         run: |
+
           rm -rf drivers/net/wireless/rtl8188eus
 
-          git clone --depth=1 \
+          git clone \
+            --depth=1 \
             https://github.com/aircrack-ng/rtl8188eus.git \
             drivers/net/wireless/rtl8188eus
 
-          echo 'obj-$(CONFIG_RTL8188EU) += rtl8188eus/' \
+          if ! grep -q rtl8188eus drivers/net/wireless/Makefile; then
+            echo 'obj-$(CONFIG_RTL8188EU) += rtl8188eus/' \
             >> drivers/net/wireless/Makefile
+          fi
 
-          echo 'source "drivers/net/wireless/rtl8188eus/Kconfig"' \
+          if ! grep -q rtl8188eus drivers/net/wireless/Kconfig; then
+            echo 'source "drivers/net/wireless/rtl8188eus/Kconfig"' \
             >> drivers/net/wireless/Kconfig
+          fi
+
+      ###########################################################
+      # Detect Defconfig
+      ###########################################################
 
       - name: Detect Defconfig
         run: |
-          echo "===== Searching Defconfig ====="
+
+          echo "===== AVAILABLE DEFCONFIG ====="
 
           find arch -name "*defconfig"
 
           if [ -f arch/arm64/configs/vendor/xiaomi/mi8996_defconfig ]; then
+
             echo "DEFCONFIG=vendor/xiaomi/mi8996_defconfig" >> $GITHUB_ENV
 
           elif [ -f arch/arm64/configs/gemini_defconfig ]; then
+
             echo "DEFCONFIG=gemini_defconfig" >> $GITHUB_ENV
 
           else
-            echo "ERROR: Defconfig tidak ditemukan."
+
+            echo "Defconfig tidak ditemukan"
             exit 1
+
           fi
 
-          echo "Menggunakan: $DEFCONFIG"
+      ###########################################################
+      # Audit Source Tree
+      ###########################################################
 
       - name: Audit Source Tree
         run: |
+
           echo "==============================="
-          echo " QCACLD"
+          echo "Kernel Version"
+          echo "==============================="
+          make kernelversion
+
+          echo
+          echo "==============================="
+          echo "QCACLD"
           echo "==============================="
           find drivers -iname "*qcacld*" || true
 
           echo
           echo "==============================="
-          echo " CNSS"
+          echo "CNSS"
           echo "==============================="
           find drivers -iname "*cnss*" || true
 
           echo
           echo "==============================="
-          echo " Wireless Drivers"
+          echo "Wireless Drivers"
           echo "==============================="
           ls -R drivers/net/wireless || true
 
           echo
           echo "==============================="
-          echo " ARM64 Config"
+          echo "Bluetooth"
           echo "==============================="
-          find arch/arm64/configs -type f
+          find net/bluetooth -name "Kconfig*"
+
+          echo
+          grep -R "RFCOMM" net/bluetooth || true
+
+          echo
+          grep -R "HIDP" net/bluetooth || true
 
           echo
           echo "==============================="
-          echo " merge_config.sh"
+          echo "USB ConfigFS"
+          echo "==============================="
+          grep -R USB_CONFIGFS drivers include 2>/dev/null || true
+
+          echo
+          echo "==============================="
+          echo "USB HID"
+          echo "==============================="
+          grep -R USB_F_HID drivers include 2>/dev/null || true
+
+          echo
+          echo "==============================="
+          echo "merge_config"
           echo "==============================="
           find scripts -name merge_config.sh
 
           echo
           echo "==============================="
-          echo " USB Gadget"
+          echo "ARM64 Config"
           echo "==============================="
-          grep -R "USB_CONFIGFS" drivers include 2>/dev/null || true
+          find arch/arm64/configs -type f
 
-          echo
-          echo "==============================="
-          echo " HID Gadget"
-          echo "==============================="
-          grep -R "USB_F_HID" drivers include 2>/dev/null || true
+      ###########################################################
+      # Generate Default Config
+      ###########################################################
 
-          echo
-          echo "==============================="
-          echo " QCA Driver"
-          echo "==============================="
-          grep -R "QCA_CLD" drivers 2>/dev/null || true
-
-          
       - name: Generate Default Config
         run: |
+
           make O=out ARCH=arm64 ${DEFCONFIG}
 
+          echo
+          echo "===== DEFAULT CONFIG ====="
+
+          grep CONFIG_BT out/.config | head -30 || true
+
+          grep CONFIG_CFG80211 out/.config || true
+
+          grep CONFIG_MAC80211 out/.config || true
+
+
+      ###########################################################
+      # Create NetHunter Config
+      ###########################################################
+
       - name: Create NetHunter Config
         run: |
+
           cat > nethunter.config <<'EOF'
+
+          #######################################################
+          ## Modules
+          #######################################################
+
           CONFIG_MODULES=y
           CONFIG_MODULE_UNLOAD=y
           CONFIG_MODULE_FORCE_UNLOAD=y
 
-          CONFIG_CFG80211=y
-          CONFIG_MAC80211=m
+          #######################################################
+          ## Networking
+          #######################################################
 
           CONFIG_PACKET=y
           CONFIG_UNIX=y
           CONFIG_NETFILTER=y
+          CONFIG_CFG80211=y
+          CONFIG_MAC80211=y
+
+          #######################################################
+          ## Qualcomm WLAN
+          #######################################################
 
           CONFIG_QCA_CLD_WLAN=y
 
+          #######################################################
+          ## USB Gadget
+          #######################################################
+
           CONFIG_USB_GADGET=y
           CONFIG_USB_LIBCOMPOSITE=y
+
           CONFIG_USB_CONFIGFS=y
-          CONFIG_USB_F_HID=y
-          CONFIG_USB_CONFIGFS_F_HID=y
-          CONFIG_USB_CONFIGFS_RNDIS=y
+          CONFIG_USB_CONFIGFS_SERIAL=y
           CONFIG_USB_CONFIGFS_ACM=y
+          CONFIG_USB_CONFIGFS_RNDIS=y
           CONFIG_USB_CONFIGFS_MASS_STORAGE=y
+          CONFIG_USB_CONFIGFS_F_HID=y
+
+          CONFIG_USB_F_HID=y
+
+          #######################################################
+          ## Bluetooth
+          #######################################################
 
           CONFIG_BT=y
-          CONFIG_BT_RFCOMM=y
+          CONFIG_BT_BREDR=y
+          CONFIG_BT_LE=y
+
           CONFIG_BT_BNEP=y
-          CONFIG_BT_HIDP=y
-          CONFIG_BT_HCIBTUSB=y
-          CONFIG_BT_HCIVHCI=y
+          CONFIG_BT_RFCOMM=m
+          CONFIG_BT_HIDP=m
+
+          CONFIG_BT_HCIBTUSB=m
+          CONFIG_BT_HCIVHCI=m
+
+          #######################################################
+          ## USB Serial
+          #######################################################
 
           CONFIG_USB_SERIAL=y
+          CONFIG_USB_ACM=m
+
           CONFIG_USB_SERIAL_CP210X=m
           CONFIG_USB_SERIAL_CH341=m
           CONFIG_USB_SERIAL_FTDI_SIO=m
           CONFIG_USB_SERIAL_PL2303=m
-          CONFIG_USB_ACM=m
+
+          #######################################################
+          ## WiFi Adapter
+          #######################################################
 
           CONFIG_RTL8188EU=m
           CONFIG_RTL8192CU=m
@@ -169,14 +272,27 @@ jobs:
           CONFIG_MT7601U=m
           CONFIG_ZD1211RW=m
 
+          #######################################################
+          ## Virtual Interface
+          #######################################################
+
           CONFIG_TUN=y
           CONFIG_VETH=y
           CONFIG_BRIDGE=y
+
+          #######################################################
+          ## CAN
+          #######################################################
+
           CONFIG_CAN=y
           CONFIG_CAN_RAW=y
           CONFIG_CAN_GW=y
           CONFIG_CAN_VCAN=y
           CONFIG_CAN_SLCAN=y
+
+          #######################################################
+          ## Filesystem
+          #######################################################
 
           CONFIG_FUSE_FS=y
           CONFIG_OVERLAY_FS=y
@@ -184,72 +300,16 @@ jobs:
           CONFIG_NFS_FS=y
           CONFIG_NTFS_FS=y
           CONFIG_SQUASHFS=y
+
           EOF
 
-      - name: Create NetHunter Config
-        run: |
-          cat > nethunter.config <<'EOF'
-          CONFIG_MODULES=y
-          CONFIG_MODULE_UNLOAD=y
-          CONFIG_MODULE_FORCE_UNLOAD=y
-
-          CONFIG_CFG80211=y
-          CONFIG_MAC80211=m
-          CONFIG_PACKET=y
-          CONFIG_UNIX=y
-          CONFIG_NETFILTER=y
-
-          CONFIG_QCA_CLD_WLAN=y
-
-          CONFIG_USB_GADGET=y
-          CONFIG_USB_LIBCOMPOSITE=y
-          CONFIG_USB_CONFIGFS=y
-          CONFIG_USB_F_HID=y
-          CONFIG_USB_CONFIGFS_F_HID=y
-          CONFIG_USB_CONFIGFS_RNDIS=y
-          CONFIG_USB_CONFIGFS_ACM=y
-          CONFIG_USB_CONFIGFS_MASS_STORAGE=y
-
-          CONFIG_BT=y
-          CONFIG_BT_RFCOMM=y
-          CONFIG_BT_BNEP=y
-          CONFIG_BT_HIDP=y
-          CONFIG_BT_HCIBTUSB=y
-          CONFIG_BT_HCIVHCI=y
-
-          CONFIG_USB_SERIAL=y
-          CONFIG_USB_SERIAL_CP210X=m
-          CONFIG_USB_SERIAL_CH341=m
-          CONFIG_USB_SERIAL_FTDI_SIO=m
-          CONFIG_USB_SERIAL_PL2303=m
-          CONFIG_USB_ACM=m
-
-          CONFIG_RTL8188EU=m
-          CONFIG_RTL8192CU=m
-          CONFIG_RTL8XXXU=m
-          CONFIG_ATH9K_HTC=m
-          CONFIG_MT7601U=m
-          CONFIG_ZD1211RW=m
-
-          CONFIG_TUN=y
-          CONFIG_VETH=y
-          CONFIG_BRIDGE=y
-          CONFIG_CAN=y
-          CONFIG_CAN_RAW=y
-          CONFIG_CAN_GW=y
-          CONFIG_CAN_VCAN=y
-          CONFIG_CAN_SLCAN=y
-
-          CONFIG_FUSE_FS=y
-          CONFIG_OVERLAY_FS=y
-          CONFIG_CIFS=y
-          CONFIG_NFS_FS=y
-          CONFIG_NTFS_FS=y
-          CONFIG_SQUASHFS=y
-          EOF
+      ###########################################################
+      # Merge Config
+      ###########################################################
 
       - name: Merge NetHunter Config
         run: |
+
           chmod +x scripts/kconfig/merge_config.sh
 
           scripts/kconfig/merge_config.sh \
@@ -260,31 +320,51 @@ jobs:
 
           make O=out ARCH=arm64 olddefconfig
 
+      ###########################################################
+      # Audit Final Config
+      ###########################################################
+
       - name: Audit NetHunter Config
         run: |
-          echo "===== FINAL CONFIG ====="
+
+          echo "==============================="
+          echo "FINAL CONFIG"
+          echo "==============================="
 
           check() {
+
             if grep -q "^$1=y" out/.config; then
-              echo "[OK] $1=y"
+
+                echo "[ OK ] $1=y"
+
             elif grep -q "^$1=m" out/.config; then
-              echo "[OK] $1=m"
+
+                echo "[ OK ] $1=m"
+
             else
-              echo "[FAIL] $1"
+
+                echo "[FAIL] $1"
+
             fi
+
           }
 
-          check CONFIG_QCA_CLD_WLAN
           check CONFIG_CFG80211
           check CONFIG_MAC80211
 
-          check CONFIG_USB_CONFIGFS
-          check CONFIG_USB_F_HID
-          check CONFIG_USB_CONFIGFS_F_HID
-
           check CONFIG_BT
+          check CONFIG_BT_BREDR
+          check CONFIG_BT_LE
+          check CONFIG_BT_BNEP
           check CONFIG_BT_RFCOMM
           check CONFIG_BT_HIDP
+
+          check CONFIG_USB_GADGET
+          check CONFIG_USB_CONFIGFS
+          check CONFIG_USB_CONFIGFS_F_HID
+          check CONFIG_USB_F_HID
+
+          check CONFIG_QCA_CLD_WLAN
 
           check CONFIG_RTL8188EU
           check CONFIG_RTL8192CU
@@ -296,11 +376,17 @@ jobs:
           check CONFIG_USB_SERIAL_CP210X
           check CONFIG_USB_SERIAL_CH341
           check CONFIG_USB_SERIAL_FTDI_SIO
+          check CONFIG_USB_SERIAL_PL2303
+
+          check CONFIG_TUN
+          check CONFIG_VETH
+          check CONFIG_BRIDGE
 
           check CONFIG_CAN
-          check CONFIG_VETH
-          check CONFIG_TUN
-          check CONFIG_BRIDGE
+          check CONFIG_CAN_RAW
+          check CONFIG_CAN_GW
+          check CONFIG_CAN_VCAN
+          check CONFIG_CAN_SLCAN
 
           check CONFIG_OVERLAY_FS
           check CONFIG_FUSE_FS
@@ -308,3 +394,222 @@ jobs:
           check CONFIG_NFS_FS
           check CONFIG_NTFS_FS
           check CONFIG_SQUASHFS
+
+          echo
+          echo "==============================="
+          echo "Bluetooth"
+          echo "==============================="
+
+          grep CONFIG_BT out/.config || true
+
+          echo
+          echo "==============================="
+          echo "Wireless"
+          echo "==============================="
+
+          grep CONFIG_CFG80211 out/.config || true
+          grep CONFIG_MAC80211 out/.config || true
+
+          echo
+          echo "==============================="
+          echo "USB"
+          echo "==============================="
+
+          grep CONFIG_USB_CONFIGFS out/.config || true
+
+          echo
+          echo "==============================="
+          echo "RTL8188EU"
+          echo "==============================="
+
+          grep CONFIG_RTL8188EU out/.config || true
+
+
+      ###########################################################
+      # Build Kernel
+      ###########################################################
+
+      - name: Build Kernel
+        run: |
+
+          export ARCH=arm64
+          export SUBARCH=arm64
+
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+
+          make -j$(nproc) \
+            O=out \
+            ARCH=arm64
+
+      ###########################################################
+      # Verify Build
+      ###########################################################
+
+      - name: Verify Kernel Image
+        run: |
+
+          echo "===== OUTPUT ====="
+
+          find out/arch/arm64/boot -type f
+
+          if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
+
+              echo "Kernel Image.gz-dtb ditemukan."
+
+          elif [ -f out/arch/arm64/boot/Image.gz ]; then
+
+              echo "Kernel Image.gz ditemukan."
+
+          elif [ -f out/arch/arm64/boot/Image ]; then
+
+              echo "Kernel Image ditemukan."
+
+          else
+
+              echo "Kernel gagal dibuat."
+              exit 1
+
+          fi
+
+      ###########################################################
+      # Build Modules
+      ###########################################################
+
+      - name: Build Modules
+        run: |
+
+          make \
+            O=out \
+            ARCH=arm64 \
+            modules -j$(nproc)
+
+      ###########################################################
+      # Install Modules
+      ###########################################################
+
+      - name: Install Modules
+        run: |
+
+          mkdir -p modules
+
+          make \
+            O=out \
+            ARCH=arm64 \
+            INSTALL_MOD_PATH=modules \
+            modules_install
+
+          find modules -name "*.ko"
+
+      ###########################################################
+      # Clone AnyKernel3
+      ###########################################################
+
+      - name: Clone AnyKernel3
+        run: |
+
+          git clone --depth=1 \
+          https://github.com/osm0sis/AnyKernel3.git \
+          AnyKernel3
+
+      ###########################################################
+      # Copy Kernel
+      ###########################################################
+
+      - name: Prepare AnyKernel3
+        run: |
+
+          if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
+
+              cp out/arch/arm64/boot/Image.gz-dtb \
+                 AnyKernel3/
+
+          elif [ -f out/arch/arm64/boot/Image.gz ]; then
+
+              cp out/arch/arm64/boot/Image.gz \
+                 AnyKernel3/
+
+          else
+
+              cp out/arch/arm64/boot/Image \
+                 AnyKernel3/
+
+          fi
+
+          if [ -d modules/lib/modules ]; then
+
+              mkdir -p AnyKernel3/modules
+
+              cp -r modules/lib/modules \
+                 AnyKernel3/modules/
+
+          fi
+
+      ###########################################################
+      # Create ZIP
+      ###########################################################
+
+      - name: Pack AnyKernel ZIP
+        run: |
+
+          cd AnyKernel3
+
+          zip -r9 \
+            ../NetHunter-Mi5-Kernel.zip \
+            *
+
+      ###########################################################
+      # Build Summary
+      ###########################################################
+
+      - name: Build Summary
+        run: |
+
+          echo "=================================="
+          echo "NetHunter Kernel Build Summary"
+          echo "=================================="
+
+          echo
+          echo "Kernel Image"
+
+          ls -lh out/arch/arm64/boot || true
+
+          echo
+          echo "Modules"
+
+          find modules -name "*.ko" || true
+
+          echo
+          echo "ZIP"
+
+          ls -lh NetHunter-Mi5-Kernel.zip
+
+      ###########################################################
+      # Upload Kernel
+      ###########################################################
+
+      - name: Upload Kernel ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: NetHunter-Mi5-Kernel
+          path: NetHunter-Mi5-Kernel.zip
+
+      ###########################################################
+      # Upload Modules
+      ###########################################################
+
+      - name: Upload Modules
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kernel-Modules
+          path: modules
+
+      ###########################################################
+      # Upload Build Config
+      ###########################################################
+
+      - name: Upload Config
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kernel-Config
+          path: out/.config
