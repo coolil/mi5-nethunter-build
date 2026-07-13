@@ -13,84 +13,107 @@ jobs:
 
     steps:
 
-    - name: Checkout Kernel
-      uses: actions/checkout@v4
-      with:
-        repository: LineageOS/android_kernel_xiaomi_msm8996
-        ref: lineage-22.2
+      - name: Checkout Kernel
+        uses: actions/checkout@v4
+        with:
+          repository: LineageOS/android_kernel_xiaomi_msm8996
+          ref: lineage-22.2
 
-    - name: Install Packages
-      run: |
-        sudo apt update
+      - name: Install Packages
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            git \
+            bc \
+            bison \
+            flex \
+            build-essential \
+            libssl-dev \
+            libelf-dev \
+            libncurses5-dev \
+            python3 \
+            unzip \
+            gcc-aarch64-linux-gnu \
+            gcc-arm-linux-gnueabi
 
-        sudo apt install -y \
-        git bc bison flex build-essential \
-        libssl-dev libelf-dev \
-        libncurses5-dev \
-        python3 unzip \
-        gcc-aarch64-linux-gnu \
-        gcc-arm-linux-gnueabi
+      - name: Clone RTL8188EUS
+        run: |
+          rm -rf drivers/net/wireless/rtl8188eus
 
-    - name: Clone RTL8188EUS
-      run: |
-        git clone --depth=1 \
-        https://github.com/aircrack-ng/rtl8188eus.git \
-        drivers/net/wireless/rtl8188eus
+          git clone --depth=1 \
+            https://github.com/aircrack-ng/rtl8188eus.git \
+            drivers/net/wireless/rtl8188eus
 
-        echo 'obj-$(CONFIG_RTL8188EU) += rtl8188eus/' \
-        >> drivers/net/wireless/Makefile
+          echo 'obj-$(CONFIG_RTL8188EU) += rtl8188eus/' \
+            >> drivers/net/wireless/Makefile
 
-        echo 'source "drivers/net/wireless/rtl8188eus/Kconfig"' \
-        >> drivers/net/wireless/Kconfig
-            - name: Detect Defconfig
-      run: |
+          echo 'source "drivers/net/wireless/rtl8188eus/Kconfig"' \
+            >> drivers/net/wireless/Kconfig
 
-        echo "Searching defconfig..."
+      - name: Detect Defconfig
+        run: |
+          echo "===== Searching Defconfig ====="
 
-        find arch -name "*defconfig"
+          find arch -name "*defconfig"
 
-        if [ -f arch/arm64/configs/vendor/xiaomi/mi8996_defconfig ]; then
-
+          if [ -f arch/arm64/configs/vendor/xiaomi/mi8996_defconfig ]; then
             echo "DEFCONFIG=vendor/xiaomi/mi8996_defconfig" >> $GITHUB_ENV
 
-        elif [ -f arch/arm64/configs/gemini_defconfig ]; then
-
+          elif [ -f arch/arm64/configs/gemini_defconfig ]; then
             echo "DEFCONFIG=gemini_defconfig" >> $GITHUB_ENV
 
-        else
-
-            echo "No defconfig found."
-
+          else
+            echo "ERROR: Defconfig tidak ditemukan."
             exit 1
+          fi
 
-        fi
-            - name: Audit Source Tree
-      run: |
+          echo "Menggunakan: $DEFCONFIG"
 
-        echo "===== QCACLD ====="
+      - name: Audit Source Tree
+        run: |
+          echo "==============================="
+          echo " QCACLD"
+          echo "==============================="
+          find drivers -iname "*qcacld*" || true
 
-        find drivers -iname "*qcacld*"
+          echo
+          echo "==============================="
+          echo " CNSS"
+          echo "==============================="
+          find drivers -iname "*cnss*" || true
 
-        echo
+          echo
+          echo "==============================="
+          echo " Wireless Drivers"
+          echo "==============================="
+          ls -R drivers/net/wireless || true
 
-        echo "===== CNSS ====="
+          echo
+          echo "==============================="
+          echo " ARM64 Config"
+          echo "==============================="
+          find arch/arm64/configs -type f
 
-        find drivers -iname "*cnss*"
+          echo
+          echo "==============================="
+          echo " merge_config.sh"
+          echo "==============================="
+          find scripts -name merge_config.sh
 
-        echo
+          echo
+          echo "==============================="
+          echo " USB Gadget"
+          echo "==============================="
+          grep -R "USB_CONFIGFS" drivers include 2>/dev/null || true
 
-        echo "===== Wireless ====="
+          echo
+          echo "==============================="
+          echo " HID Gadget"
+          echo "==============================="
+          grep -R "USB_F_HID" drivers include 2>/dev/null || true
 
-        ls drivers/net/wireless
-
-        echo
-
-        echo "===== Config ====="
-
-        ls arch/arm64/configs
-
-        echo
-
-        echo "===== Merge Config ====="
-
-        find scripts -name merge_config.sh
+          echo
+          echo "==============================="
+          echo " QCA Driver"
+          echo "==============================="
+          grep -R "QCA_CLD" drivers 2>/dev/null || true
