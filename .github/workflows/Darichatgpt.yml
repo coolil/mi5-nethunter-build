@@ -117,3 +117,131 @@ jobs:
           echo " QCA Driver"
           echo "==============================="
           grep -R "QCA_CLD" drivers 2>/dev/null || true
+
+          
+      - name: Generate Default Config
+        run: |
+          make O=out ARCH=arm64 ${DEFCONFIG}
+
+      - name: Create NetHunter Config
+        run: |
+          cat > nethunter.config <<'EOF'
+          CONFIG_MODULES=y
+          CONFIG_MODULE_UNLOAD=y
+          CONFIG_MODULE_FORCE_UNLOAD=y
+
+          CONFIG_CFG80211=y
+          CONFIG_MAC80211=m
+
+          CONFIG_PACKET=y
+          CONFIG_UNIX=y
+          CONFIG_NETFILTER=y
+
+          CONFIG_QCA_CLD_WLAN=y
+
+          CONFIG_USB_GADGET=y
+          CONFIG_USB_LIBCOMPOSITE=y
+          CONFIG_USB_CONFIGFS=y
+          CONFIG_USB_F_HID=y
+          CONFIG_USB_CONFIGFS_F_HID=y
+          CONFIG_USB_CONFIGFS_RNDIS=y
+          CONFIG_USB_CONFIGFS_ACM=y
+          CONFIG_USB_CONFIGFS_MASS_STORAGE=y
+
+          CONFIG_BT=y
+          CONFIG_BT_RFCOMM=y
+          CONFIG_BT_BNEP=y
+          CONFIG_BT_HIDP=y
+          CONFIG_BT_HCIBTUSB=y
+          CONFIG_BT_HCIVHCI=y
+
+          CONFIG_USB_SERIAL=y
+          CONFIG_USB_SERIAL_CP210X=m
+          CONFIG_USB_SERIAL_CH341=m
+          CONFIG_USB_SERIAL_FTDI_SIO=m
+          CONFIG_USB_SERIAL_PL2303=m
+          CONFIG_USB_ACM=m
+
+          CONFIG_RTL8188EU=m
+          CONFIG_RTL8192CU=m
+          CONFIG_RTL8XXXU=m
+          CONFIG_ATH9K_HTC=m
+          CONFIG_MT7601U=m
+          CONFIG_ZD1211RW=m
+
+          CONFIG_TUN=y
+          CONFIG_VETH=y
+          CONFIG_BRIDGE=y
+          CONFIG_CAN=y
+          CONFIG_CAN_RAW=y
+          CONFIG_CAN_GW=y
+          CONFIG_CAN_VCAN=y
+          CONFIG_CAN_SLCAN=y
+
+          CONFIG_FUSE_FS=y
+          CONFIG_OVERLAY_FS=y
+          CONFIG_CIFS=y
+          CONFIG_NFS_FS=y
+          CONFIG_NTFS_FS=y
+          CONFIG_SQUASHFS=y
+          EOF
+
+        - name: Merge NetHunter Config
+        run: |
+          chmod +x scripts/kconfig/merge_config.sh
+
+          scripts/kconfig/merge_config.sh \
+            -m \
+            -O out \
+            out/.config \
+            nethunter.config
+
+          make O=out ARCH=arm64 olddefconfig
+
+        - name: Audit NetHunter Config
+        run: |
+          echo "===== FINAL CONFIG ====="
+
+          check() {
+            if grep -q "^$1=y" out/.config; then
+              echo "[OK] $1=y"
+            elif grep -q "^$1=m" out/.config; then
+              echo "[OK] $1=m"
+            else
+              echo "[FAIL] $1"
+            fi
+          }
+
+          check CONFIG_QCA_CLD_WLAN
+          check CONFIG_CFG80211
+          check CONFIG_MAC80211
+
+          check CONFIG_USB_CONFIGFS
+          check CONFIG_USB_F_HID
+          check CONFIG_USB_CONFIGFS_F_HID
+
+          check CONFIG_BT
+          check CONFIG_BT_RFCOMM
+          check CONFIG_BT_HIDP
+
+          check CONFIG_RTL8188EU
+          check CONFIG_RTL8192CU
+          check CONFIG_RTL8XXXU
+          check CONFIG_ATH9K_HTC
+          check CONFIG_MT7601U
+          check CONFIG_ZD1211RW
+
+          check CONFIG_USB_SERIAL_CP210X
+          check CONFIG_USB_SERIAL_CH341
+          check CONFIG_USB_SERIAL_FTDI_SIO
+
+          check CONFIG_CAN
+          check CONFIG_VETH
+          check CONFIG_TUN
+          check CONFIG_BRIDGE
+
+          check CONFIG_OVERLAY_FS
+          check CONFIG_FUSE_FS
+          check CONFIG_CIFS
+          check CONFIG_NFS_FS
+          check CONFIG_SQUASHFS
