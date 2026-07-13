@@ -1,0 +1,96 @@
+name: Build NetHunter Kernel Mi5
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    env:
+      ARCH: arm64
+      SUBARCH: arm64
+
+    steps:
+
+    - name: Checkout Kernel
+      uses: actions/checkout@v4
+      with:
+        repository: LineageOS/android_kernel_xiaomi_msm8996
+        ref: lineage-22.2
+
+    - name: Install Packages
+      run: |
+        sudo apt update
+
+        sudo apt install -y \
+        git bc bison flex build-essential \
+        libssl-dev libelf-dev \
+        libncurses5-dev \
+        python3 unzip \
+        gcc-aarch64-linux-gnu \
+        gcc-arm-linux-gnueabi
+
+    - name: Clone RTL8188EUS
+      run: |
+        git clone --depth=1 \
+        https://github.com/aircrack-ng/rtl8188eus.git \
+        drivers/net/wireless/rtl8188eus
+
+        echo 'obj-$(CONFIG_RTL8188EU) += rtl8188eus/' \
+        >> drivers/net/wireless/Makefile
+
+        echo 'source "drivers/net/wireless/rtl8188eus/Kconfig"' \
+        >> drivers/net/wireless/Kconfig
+            - name: Detect Defconfig
+      run: |
+
+        echo "Searching defconfig..."
+
+        find arch -name "*defconfig"
+
+        if [ -f arch/arm64/configs/vendor/xiaomi/mi8996_defconfig ]; then
+
+            echo "DEFCONFIG=vendor/xiaomi/mi8996_defconfig" >> $GITHUB_ENV
+
+        elif [ -f arch/arm64/configs/gemini_defconfig ]; then
+
+            echo "DEFCONFIG=gemini_defconfig" >> $GITHUB_ENV
+
+        else
+
+            echo "No defconfig found."
+
+            exit 1
+
+        fi
+            - name: Audit Source Tree
+      run: |
+
+        echo "===== QCACLD ====="
+
+        find drivers -iname "*qcacld*"
+
+        echo
+
+        echo "===== CNSS ====="
+
+        find drivers -iname "*cnss*"
+
+        echo
+
+        echo "===== Wireless ====="
+
+        ls drivers/net/wireless
+
+        echo
+
+        echo "===== Config ====="
+
+        ls arch/arm64/configs
+
+        echo
+
+        echo "===== Merge Config ====="
+
+        find scripts -name merge_config.sh
