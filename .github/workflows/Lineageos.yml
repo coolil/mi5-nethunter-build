@@ -33,10 +33,11 @@ jobs:
           sudo apt install -y \
             git bc bison flex build-essential libssl-dev libelf-dev \
             libncurses5-dev python3 unzip zip rsync curl wget cpio \
-            gcc-arm-linux-gnueabi
+            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
 
       ###########################################################
       # Download AOSP Clang Toolchain (Dengan Caching)
+      # (Mencegah DTC Syntax Error & Kompatibel dengan LineageOS)
       ###########################################################
 
       - name: Cache AOSP Clang
@@ -86,6 +87,7 @@ jobs:
 
       ###########################################################
       # Hotfix: Patch Wireless Headers
+      # (Mengatasi macro undeclared pada mac80211 dan rtl8188eus)
       ###########################################################
 
       - name: Patch Wireless Headers
@@ -128,12 +130,83 @@ jobs:
           fi
 
       ###########################################################
+      # Audit Source Tree
+      ###########################################################
+
+      - name: Audit Source Tree
+        run: |
+          echo "==============================="
+          echo "Kernel Version"
+          echo "==============================="
+          make kernelversion
+
+          echo
+          echo "==============================="
+          echo "QCACLD"
+          echo "==============================="
+          find drivers -iname "*qcacld*" || true
+
+          echo
+          echo "==============================="
+          echo "CNSS"
+          echo "==============================="
+          find drivers -iname "*cnss*" || true
+
+          echo
+          echo "==============================="
+          echo "Wireless Drivers"
+          echo "==============================="
+          ls -R drivers/net/wireless || true
+
+          echo
+          echo "==============================="
+          echo "Bluetooth"
+          echo "==============================="
+          find net/bluetooth -name "Kconfig*"
+
+          echo
+          grep -R "RFCOMM" net/bluetooth || true
+
+          echo
+          grep -R "HIDP" net/bluetooth || true
+
+          echo
+          echo "==============================="
+          echo "USB ConfigFS"
+          echo "==============================="
+          grep -R USB_CONFIGFS drivers include 2>/dev/null || true
+
+          echo
+          echo "==============================="
+          echo "USB HID"
+          echo "==============================="
+          grep -R USB_F_HID drivers include 2>/dev/null || true
+
+          echo
+          echo "==============================="
+          echo "merge_config"
+          echo "==============================="
+          find scripts -name merge_config.sh
+
+          echo
+          echo "==============================="
+          echo "ARM64 Config"
+          echo "==============================="
+          find arch/arm64/configs -type f
+
+      ###########################################################
       # Generate Default Config
       ###########################################################
 
       - name: Generate Default Config
         run: |
           make O=out ARCH=arm64 ${DEFCONFIG}
+
+          echo
+          echo "===== DEFAULT CONFIG ====="
+          grep CONFIG_BT out/.config | head -30 || true
+          grep CONFIG_CFG80211 out/.config || true
+          grep CONFIG_MAC80211 out/.config || true
 
       ###########################################################
       # Create NetHunter Config
@@ -142,18 +215,30 @@ jobs:
       - name: Create NetHunter Config
         run: |
           cat > nethunter.config <<'EOF'
+          #######################################################
+          ## Modules
+          #######################################################
           CONFIG_MODULES=y
           CONFIG_MODULE_UNLOAD=y
           CONFIG_MODULE_FORCE_UNLOAD=y
 
+          #######################################################
+          ## Networking
+          #######################################################
           CONFIG_PACKET=y
           CONFIG_UNIX=y
           CONFIG_NETFILTER=y
           CONFIG_CFG80211=y
           CONFIG_MAC80211=y
 
+          #######################################################
+          ## Qualcomm WLAN
+          #######################################################
           CONFIG_QCA_CLD_WLAN=y
 
+          #######################################################
+          ## USB Gadget
+          #######################################################
           CONFIG_USB_GADGET=y
           CONFIG_USB_LIBCOMPOSITE=y
           CONFIG_USB_CONFIGFS=y
@@ -164,6 +249,9 @@ jobs:
           CONFIG_USB_CONFIGFS_F_HID=y
           CONFIG_USB_F_HID=y
 
+          #######################################################
+          ## Bluetooth
+          #######################################################
           CONFIG_BT=y
           CONFIG_BT_BREDR=y
           CONFIG_BT_LE=y
@@ -173,6 +261,9 @@ jobs:
           CONFIG_BT_HCIBTUSB=m
           CONFIG_BT_HCIVHCI=m
 
+          #######################################################
+          ## USB Serial
+          #######################################################
           CONFIG_USB_SERIAL=y
           CONFIG_USB_ACM=m
           CONFIG_USB_SERIAL_CP210X=m
@@ -180,6 +271,9 @@ jobs:
           CONFIG_USB_SERIAL_FTDI_SIO=m
           CONFIG_USB_SERIAL_PL2303=m
 
+          #######################################################
+          ## WiFi Adapter
+          #######################################################
           CONFIG_RTL8188EU=m
           CONFIG_RTL8192CU=m
           CONFIG_RTL8XXXU=m
@@ -187,16 +281,25 @@ jobs:
           CONFIG_MT7601U=m
           CONFIG_ZD1211RW=m
 
+          #######################################################
+          ## Virtual Interface
+          #######################################################
           CONFIG_TUN=y
           CONFIG_VETH=y
           CONFIG_BRIDGE=y
 
+          #######################################################
+          ## CAN
+          #######################################################
           CONFIG_CAN=y
           CONFIG_CAN_RAW=y
           CONFIG_CAN_GW=y
           CONFIG_CAN_VCAN=y
           CONFIG_CAN_SLCAN=y
 
+          #######################################################
+          ## Filesystem
+          #######################################################
           CONFIG_FUSE_FS=y
           CONFIG_OVERLAY_FS=y
           CONFIG_CIFS=y
@@ -212,11 +315,100 @@ jobs:
       - name: Merge NetHunter Config
         run: |
           chmod +x scripts/kconfig/merge_config.sh
-          scripts/kconfig/merge_config.sh -m -O out out/.config nethunter.config
+
+          scripts/kconfig/merge_config.sh \
+            -m \
+            -O out \
+            out/.config \
+            nethunter.config
+
           make O=out ARCH=arm64 olddefconfig
 
       ###########################################################
-      # Build Kernel
+      # Audit Final Config
+      ###########################################################
+
+      - name: Audit NetHunter Config
+        run: |
+          echo "==============================="
+          echo "FINAL CONFIG"
+          echo "==============================="
+
+          check() {
+            if grep -q "^$1=y" out/.config; then
+                echo "[ OK ] $1=y"
+            elif grep -q "^$1=m" out/.config; then
+                echo "[ OK ] $1=m"
+            else
+                echo "[FAIL] $1"
+            fi
+          }
+
+          check CONFIG_CFG80211
+          check CONFIG_MAC80211
+          check CONFIG_BT
+          check CONFIG_BT_BREDR
+          check CONFIG_BT_LE
+          check CONFIG_BT_BNEP
+          check CONFIG_BT_RFCOMM
+          check CONFIG_BT_HIDP
+          check CONFIG_USB_GADGET
+          check CONFIG_USB_CONFIGFS
+          check CONFIG_USB_CONFIGFS_F_HID
+          check CONFIG_USB_F_HID
+          check CONFIG_QCA_CLD_WLAN
+          check CONFIG_RTL8188EU
+          check CONFIG_RTL8192CU
+          check CONFIG_RTL8XXXU
+          check CONFIG_ATH9K_HTC
+          check CONFIG_MT7601U
+          check CONFIG_ZD1211RW
+          check CONFIG_USB_SERIAL_CP210X
+          check CONFIG_USB_SERIAL_CH341
+          check CONFIG_USB_SERIAL_FTDI_SIO
+          check CONFIG_USB_SERIAL_PL2303
+          check CONFIG_TUN
+          check CONFIG_VETH
+          check CONFIG_BRIDGE
+          check CONFIG_CAN
+          check CONFIG_CAN_RAW
+          check CONFIG_CAN_GW
+          check CONFIG_CAN_VCAN
+          check CONFIG_CAN_SLCAN
+          check CONFIG_OVERLAY_FS
+          check CONFIG_FUSE_FS
+          check CONFIG_CIFS
+          check CONFIG_NFS_FS
+          check CONFIG_NTFS_FS
+          check CONFIG_SQUASHFS
+
+          echo
+          echo "==============================="
+          echo "Bluetooth"
+          echo "==============================="
+          grep CONFIG_BT out/.config || true
+
+          echo
+          echo "==============================="
+          echo "Wireless"
+          echo "==============================="
+          grep CONFIG_CFG80211 out/.config || true
+          grep CONFIG_MAC80211 out/.config || true
+
+          echo
+          echo "==============================="
+          echo "USB"
+          echo "==============================="
+          grep CONFIG_USB_CONFIGFS out/.config || true
+
+          echo
+          echo "==============================="
+          echo "RTL8188EU"
+          echo "==============================="
+          grep CONFIG_RTL8188EU out/.config || true
+
+      ###########################################################
+      # Build Kernel (Menggunakan Clang & Mendukung Compat vDSO)
       ###########################################################
 
       - name: Build Kernel
@@ -286,12 +478,12 @@ jobs:
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AnyKernel3
 
       ###########################################################
-      # Prepare AnyKernel3
+      # Prepare AnyKernel3 (Termasuk Konfigurasi Partisi Mi 5)
       ###########################################################
 
       - name: Prepare AnyKernel3
         run: |
-          if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
+          if [ -f out/arch/arch/arm64/boot/Image.gz-dtb ]; then
               cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
           elif [ -f out/arch/arm64/boot/Image.gz ]; then
               cp out/arch/arm64/boot/Image.gz AnyKernel3/
@@ -304,7 +496,7 @@ jobs:
               cp -r modules/lib/modules AnyKernel3/modules/
           fi
 
-          # Modifikasi agar script installer mengenali target partisi Mi 5 (gemini)
+          # Mengarahkan installer ke partisi boot Xiaomi Mi 5 (gemini)
           sed -i 's/properties() {/properties() {\nkernel.string=NetHunter Kernel Mi5/g' AnyKernel3/anykernel.sh
           sed -i 's|block=.*|block=/dev/block/bootdevice/by-name/boot;|g' AnyKernel3/anykernel.sh
           sed -i 's/is_slot_device=0/is_slot_device=0/g' AnyKernel3/anykernel.sh
@@ -319,7 +511,26 @@ jobs:
           zip -r9 ../NetHunter-Mi5-Kernel.zip *
 
       ###########################################################
-      # Upload Artifacts
+      # Build Summary
+      ###########################################################
+
+      - name: Build Summary
+        run: |
+          echo "=================================="
+          echo "NetHunter Kernel Build Summary"
+          echo "=================================="
+          echo
+          echo "Kernel Image"
+          ls -lh out/arch/arm64/boot || true
+          echo
+          echo "Modules"
+          find modules -name "*.ko" || true
+          echo
+          echo "ZIP"
+          ls -lh NetHunter-Mi5-Kernel.zip
+
+      ###########################################################
+      # Upload Kernel ZIP
       ###########################################################
 
       - name: Upload Kernel ZIP
@@ -328,11 +539,19 @@ jobs:
           name: NetHunter-Mi5-Kernel
           path: NetHunter-Mi5-Kernel.zip
 
+      ###########################################################
+      # Upload Modules
+      ###########################################################
+
       - name: Upload Modules
         uses: actions/upload-artifact@v4
         with:
           name: Kernel-Modules
           path: modules
+
+      ###########################################################
+      # Upload Build Config
+      ###########################################################
 
       - name: Upload Config
         uses: actions/upload-artifact@v4
