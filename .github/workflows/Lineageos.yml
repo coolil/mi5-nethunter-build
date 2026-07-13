@@ -1,214 +1,327 @@
-name: Build NetHunter Full Kernel Mi 5 LineageOS 22.2 Final
+name: Build NetHunter Kernel Mi5
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
+
+    env:
+      ARCH: arm64
+      SUBARCH: arm64
+
     steps:
-      # Mengunduh langsung source kernel resmi LineageOS msm8996 cabang 22.2
-      - name: Checkout LineageOS Kernel Source
+
+      ###########################################################
+      # Checkout Kernel
+      ###########################################################
+
+      - name: Checkout Kernel
         uses: actions/checkout@v4
         with:
-          repository: 'LineageOS/android_kernel_xiaomi_msm8996'
-          ref: 'lineage-22.2'
+          repository: LineageOS/android_kernel_xiaomi_msm8996
+          ref: lineage-22.2
 
-      - name: Install Dependencies & Python Setup
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y bc build-essential libncurses5-dev libssl-dev xz-utils wget curl git cpio libelf-dev python3 python3-pip
+      ###########################################################
+      # Install Packages
+      ###########################################################
 
-      - name: Download AOSP Clang & Toolchain Components
+      - name: Install Packages
         run: |
-          mkdir -p $GITHUB_WORKSPACE/toolchain
-          cd $GITHUB_WORKSPACE/toolchain
-          # Mengunduh Clang modern yang cocok untuk kernel Android versi atas
-          git clone https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 -b master --depth=1 clang
-          # Tetap unduh binutils GNU untuk assembler pendukung (as, ld)
-          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 -b ndk-r23 --depth=1 gcc64
-          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 -b ndk-r23 --depth=1 gcc32
+          sudo apt update
+          sudo apt install -y \
+            git bc bison flex build-essential libssl-dev libelf-dev \
+            libncurses5-dev python3 unzip zip rsync curl wget cpio
 
-      - name: Hardcoded Patch Driver qcacld-2.0 (Monitor Mode Fix)
+      ###########################################################
+      # Download AOSP Clang Toolchain
+      # (Diperlukan untuk menghindari DTC error & kecocokan LineageOS)
+      ###########################################################
+
+      - name: Download AOSP Clang
         run: |
-          echo "===================================================="
-          echo "    MEMULAI PATCHING PRESISI DRIVER INTERNAL MI 5   "
-          echo "===================================================="
-          
-          # Jalankan skrip pembantu lokal hanya jika file tersebut ada di repo Anda
-          if [ -f "enable_nethunter_full.sh" ]; then
-            chmod +x enable_nethunter_full.sh
-            ./enable_nethunter_full.sh || true
+          mkdir -p $GITHUB_WORKSPACE/clang
+          cd $GITHUB_WORKSPACE/clang
+          curl -LO https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r530567.tar.gz
+          tar -xzf clang-r530567.tar.gz
+          echo "$GITHUB_WORKSPACE/clang/bin" >> $GITHUB_PATH
+
+      ###########################################################
+      # Clone RTL8188EUS Aircrack
+      ###########################################################
+
+      - name: Clone RTL8188EUS
+        run: |
+          rm -rf drivers/net/wireless/rtl8188eus
+
+          git clone \
+            --depth=1 \
+            https://github.com/aircrack-ng/rtl8188eus.git \
+            drivers/net/wireless/rtl8188eus
+
+          if ! grep -q rtl8188eus drivers/net/wireless/Makefile; then
+            echo 'obj-$(CONFIG_RTL8188EU) += rtl8188eus/' \
+            >> drivers/net/wireless/Makefile
           fi
+
+          if ! grep -q rtl8188eus drivers/net/wireless/Kconfig; then
+            echo 'source "drivers/net/wireless/rtl8188eus/Kconfig"' \
+            >> drivers/net/wireless/Kconfig
+          fi
+
+      ###########################################################
+      # Hotfix: Patch Wireless Headers
+      # (Mengatasi macro undeclared pada mac80211 dan rtl8188eus)
+      ###########################################################
+
+      - name: Patch Wireless Headers
+        run: |
+          echo "Injecting missing legacy wireless definitions..."
           
-          # Jalur file utama driver qcacld-2.0 hasil unduhan LineageOS repo
-          HDD_MAIN="drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_main.c"
-          HDD_CFG="drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c"
-          
-          # 1. Memaksa Driver Mengizinkan Interface Monitor Mode Tanpa Crash
-          if [ -f "$HDD_MAIN" ]; then
-            echo "[PATCH] Memodifikasi wlan_hdd_main.c..."
-            sed -i 's/wlan_hdd_set_monitor_mode(void \*pAdapter, bool bEnable);/wlan_hdd_set_monitor_mode(void *pAdapter, bool bEnable); \/\/ Patched for NetHunter/g' $HDD_MAIN
-            sed -i 's/if (wlan_hdd_get_conparam() == QWLAN_WLAN_STATUS_MAX)/if (0) \/\/ Bypass constraint/g' $HDD_MAIN
-            echo "-> wlan_hdd_main.c Berhasil Di-patch."
+          # Menyuntikkan definisi macro ke header wireless utama kernel
+          cat << 'EOF' >> include/net/cfg80211.h
+
+          /* NetHunter Fixes for Legacy Wireless Compile */
+          #ifndef IEEE80211_BAND_2GHZ
+          #define IEEE80211_BAND_2GHZ NL80211_BAND_2GHZ
+          #endif
+          #ifndef IEEE80211_BAND_5GHZ
+          #define IEEE80211_BAND_5GHZ NL80211_BAND_5GHZ
+          #endif
+          #ifndef IEEE80211_BAND_60GHZ
+          #define IEEE80211_BAND_60GHZ NL80211_BAND_60GHZ
+          #endif
+          #ifndef IEEE80211_NUM_BANDS
+          #define IEEE80211_NUM_BANDS NUM_NL80211_BANDS
+          #endif
+          EOF
+
+      ###########################################################
+      # Detect Defconfig
+      ###########################################################
+
+      - name: Detect Defconfig
+        run: |
+          echo "===== AVAILABLE DEFCONFIG ====="
+          find arch -name "*defconfig"
+
+          if [ -f arch/arm64/configs/vendor/xiaomi/mi8996_defconfig ]; then
+            echo "DEFCONFIG=vendor/xiaomi/mi8996_defconfig" >> $GITHUB_ENV
+          elif [ -f arch/arm64/configs/gemini_defconfig ]; then
+            echo "DEFCONFIG=gemini_defconfig" >> $GITHUB_ENV
           else
-            echo "[PERINGATAN] File wlan_hdd_main.c tidak ditemukan di jalur standar!"
+            echo "Defconfig tidak ditemukan"
+            exit 1
           fi
 
-          # 2. Mengaktifkan Fitur Packet Injection dan Frame Sniffing
-          if [ -f "$HDD_CFG" ]; then
-            echo "[PATCH] Memodifikasi wlan_hdd_cfg80211.c..."
-            sed -i 's/case NL80211_IFTYPE_MONITOR:/case NL80211_IFTYPE_MONITOR: \n        return 0; \/\/ Force allow monitor mode/g' $HDD_CFG
-            echo "-> wlan_hdd_cfg80211.c Berhasil Di-patch."
-          else
-            echo "[PERINGATAN] File wlan_hdd_cfg80211.c tidak ditemukan!"
-          fi
-          echo "===================================================="
+      ###########################################################
+      # Generate Default Config
+      ###########################################################
 
-      - name: Create Separate NetHunter Blueprint File
+      - name: Generate Default Config
         run: |
-          cat << EOF > nethunter_full.config
+          make O=out ARCH=arm64 ${DEFCONFIG}
+
+      ###########################################################
+      # Create NetHunter Config
+      ###########################################################
+
+      - name: Create NetHunter Config
+        run: |
+          cat > nethunter.config <<'EOF'
           CONFIG_MODULES=y
           CONFIG_MODULE_UNLOAD=y
           CONFIG_MODULE_FORCE_UNLOAD=y
-          CONFIG_MODVERSIONS=y
+
           CONFIG_PACKET=y
           CONFIG_UNIX=y
-          CONFIG_NET=y
-          CONFIG_INET=y
-          
-          # Subsistem Wi-Fi & Monitor Mode
+          CONFIG_NETFILTER=y
           CONFIG_CFG80211=y
-          CONFIG_MAC80211=m
-          CONFIG_RFKILL=y
-          CONFIG_WIRELESS=y
-          
-          # Driver Wi-Fi Internal Mi 5
+          CONFIG_MAC80211=y
+
           CONFIG_QCA_CLD_WLAN=y
-          
-          # Hasil Validasi Jalur Terminal: Membuka Kunci Driver USB Eksternal
-          CONFIG_NET_USB=y
-          CONFIG_RTLWIFI=m
-          CONFIG_RTLWIFI_USB=m
-          CONFIG_RTL8192CU=m
-          CONFIG_RTL8XXXU=m
-          CONFIG_R8188EU=m
-          CONFIG_MT7601U=m
-          CONFIG_ATH9K_HTC=m
-          CONFIG_RT2X00=m
-          CONFIG_RT2800USB=m
-          CONFIG_RT73USB=m
-          CONFIG_RT2500USB=m
-          
-          # Hasil Validasi Jalur Terminal: HID Gadget & Input Injection (BadUSB)
+
           CONFIG_USB_GADGET=y
           CONFIG_USB_LIBCOMPOSITE=y
           CONFIG_USB_CONFIGFS=y
-          CONFIG_USB_F_HID=y
-          CONFIG_USB_CONFIGFS_F_HID=y
-          CONFIG_USB_CONFIGFS_RNDIS=y
+          CONFIG_USB_CONFIGFS_SERIAL=y
           CONFIG_USB_CONFIGFS_ACM=y
+          CONFIG_USB_CONFIGFS_RNDIS=y
           CONFIG_USB_CONFIGFS_MASS_STORAGE=y
-          CONFIG_INPUT_UINPUT=y
-          CONFIG_UHID=y
-          
-          # Hasil Validasi Jalur Terminal: Bluetooth & USB Serial Adapter
+          CONFIG_USB_CONFIGFS_F_HID=y
+          CONFIG_USB_F_HID=y
+
           CONFIG_BT=y
           CONFIG_BT_BREDR=y
           CONFIG_BT_LE=y
-          CONFIG_BT_RFCOMM=y
           CONFIG_BT_BNEP=y
-          CONFIG_BT_HIDP=y
-          CONFIG_BT_HCIBTUSB=y
-          CONFIG_BT_HCIVHCI=y
+          CONFIG_BT_RFCOMM=m
+          CONFIG_BT_HIDP=m
+          CONFIG_BT_HCIBTUSB=m
+          CONFIG_BT_HCIVHCI=m
+
           CONFIG_USB_SERIAL=y
+          CONFIG_USB_ACM=m
           CONFIG_USB_SERIAL_CP210X=m
           CONFIG_USB_SERIAL_CH341=m
           CONFIG_USB_SERIAL_FTDI_SIO=m
           CONFIG_USB_SERIAL_PL2303=m
-          CONFIG_USB_SERIAL_OPTION=m
-          CONFIG_USB_ACM=m
-          
-          # Hasil Validasi Jalur Terminal: Subsistem File & Network Bridge
-          CONFIG_FUSE_FS=y
-          CONFIG_OVERLAY_FS=y
-          CONFIG_CIFS=y
-          CONFIG_NTFS_FS=y
+
+          CONFIG_RTL8188EU=m
+          CONFIG_RTL8192CU=m
+          CONFIG_RTL8XXXU=m
+          CONFIG_ATH9K_HTC=m
+          CONFIG_MT7601U=m
+          CONFIG_ZD1211RW=m
+
           CONFIG_TUN=y
           CONFIG_VETH=y
           CONFIG_BRIDGE=y
+
           CONFIG_CAN=y
           CONFIG_CAN_RAW=y
           CONFIG_CAN_GW=y
           CONFIG_CAN_VCAN=y
           CONFIG_CAN_SLCAN=y
+
+          CONFIG_FUSE_FS=y
+          CONFIG_OVERLAY_FS=y
+          CONFIG_CIFS=y
+          CONFIG_NFS_FS=y
+          CONFIG_NTFS_FS=y
+          CONFIG_SQUASHFS=y
           EOF
 
-      - name: Process Configuration & Triple Defconfig Merging
+      ###########################################################
+      # Merge Config
+      ###########################################################
+
+      - name: Merge NetHunter Config
         run: |
-          CLANG_DIR=$(ls -d $GITHUB_WORKSPACE/toolchain/clang/linux-x86/clang-*)
-          export PATH=$CLANG_DIR/bin:$GITHUB_WORKSPACE/toolchain/gcc64/bin:$GITHUB_WORKSPACE/toolchain/gcc32/bin:$PATH
+          chmod +x scripts/kconfig/merge_config.sh
+          scripts/kconfig/merge_config.sh -m -O out out/.config nethunter.config
+          make O=out ARCH=arm64 olddefconfig
+
+      ###########################################################
+      # Build Kernel
+      ###########################################################
+
+      - name: Build Kernel
+        run: |
           export ARCH=arm64
-          export CROSS_COMPILE=aarch64-linux-android-
-          export CROSS_COMPILE_ARM32=arm-linux-androideabi-
-          
-          # VERIFIKASI TRIPLE MERGE SESUAI JALUR ASLI TERMINAL ANDA
-          ARCH=arm64 ./scripts/kconfig/merge_config.sh -m \
-            arch/arm64/configs/vendor/xiaomi/mi8996_defconfig \
-            arch/arm64/configs/vendor/xiaomi/gemini.config \
-            nethunter_full.config
-          
-          make olddefconfig
+          export SUBARCH=arm64
 
-      - name: Strict Verify Configuration (Audit Check)
+          make -j$(nproc) O=out ARCH=arm64 \
+            CC=clang \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            LLVM=1 \
+            LLVM_IAS=1
+
+      ###########################################################
+      # Verify Build
+      ###########################################################
+
+      - name: Verify Kernel Image
         run: |
-          echo "===================================================="
-          echo "    AUDIT VALIDASI JALUR DRIVER SEBELUM COMPILE     "
-          echo "===================================================="
-          
-          audit_check() {
-              local CONFIG_NAME=$1
-              if grep -q "^${CONFIG_NAME}=y" .config; then
-                  echo -e "[\e[32mOK - INTERNAL\e[0m] $CONFIG_NAME Terkunci Aktif."
-              elif grep -q "^${CONFIG_NAME}=m" .config; then
-                  echo -e "[\e[34mOK - MODUL (.KO)\e[0m] $CONFIG_NAME Terkunci Sebagai Modul Eksternal."
-              else
-                  echo -e "[\e[31mLEWAT / TIDAK AKTIF\e[0m] $CONFIG_NAME GAGAL DI-LOAD!"
-              fi
-          }
+          echo "===== OUTPUT ====="
+          find out/arch/arm64/boot -type f
 
-          echo "--- 1. Cek Validasi Driver Wi-Fi ---"
-          audit_check "CONFIG_QCA_CLD_WLAN"
-          audit_check "CONFIG_MAC80211"
-          audit_check "CONFIG_R8188EU"
-          audit_check "CONFIG_ATH9K_HTC"
-          audit_check "CONFIG_MT7601U"
-          
-          echo "--- 2. Cek Validasi USB Gadget (BadUSB) ---"
-          audit_check "CONFIG_USB_CONFIGFS_F_HID"
-          audit_check "CONFIG_INPUT_UINPUT"
-          
-          echo "--- 3. Cek Validasi USB Serial & Network ---"
-          audit_check "CONFIG_USB_SERIAL"
-          audit_check "CONFIG_BRIDGE"
-          audit_check "CONFIG_CAN"
-          echo "===================================================="
+          if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
+              echo "Kernel Image.gz-dtb ditemukan."
+          elif [ -f out/arch/arm64/boot/Image.gz ]; then
+              echo "Kernel Image.gz ditemukan."
+          elif [ -f out/arch/arm64/boot/Image ]; then
+              echo "Kernel Image ditemukan."
+          else
+              echo "Kernel gagal dibuat."
+              exit 1
+          fi
 
-      - name: Compile Kernel (Clang Mode)
+      ###########################################################
+      # Build Modules
+      ###########################################################
+
+      - name: Build Modules
         run: |
-          CLANG_DIR=$(ls -d $GITHUB_WORKSPACE/toolchain/clang/linux-x86/clang-*)
-          export PATH=$CLANG_DIR/bin:$GITHUB_WORKSPACE/toolchain/gcc64/bin:$GITHUB_WORKSPACE/toolchain/gcc32/bin:$PATH
-          
-          export ARCH=arm64
-          export CLANG_TRIPLE=aarch64-linux-gnu-
-          export CROSS_COMPILE=aarch64-linux-android-
-          export CROSS_COMPILE_ARM32=arm-linux-androideabi-
-          
-          # Jalankan kompilasi penuh menggunakan Clang LLVM terintegrasi
-          make -j$(nproc) CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-android-
+          make -j$(nproc) O=out ARCH=arm64 \
+            CC=clang \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            modules
 
-      - name: Upload Finished Kernel
+      ###########################################################
+      # Install Modules
+      ###########################################################
+
+      - name: Install Modules
+        run: |
+          mkdir -p modules
+          make O=out ARCH=arm64 INSTALL_MOD_PATH=modules modules_install
+          find modules -name "*.ko"
+
+      ###########################################################
+      # Clone AnyKernel3
+      ###########################################################
+
+      - name: Clone AnyKernel3
+        run: |
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AnyKernel3
+
+      ###########################################################
+      # Prepare AnyKernel3 (Termasuk Konfigurasi Partisi Mi 5)
+      ###########################################################
+
+      - name: Prepare AnyKernel3
+        run: |
+          if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
+              cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
+          elif [ -f out/arch/arm64/boot/Image.gz ]; then
+              cp out/arch/arm64/boot/Image.gz AnyKernel3/
+          else
+              cp out/arch/arm64/boot/Image AnyKernel3/
+          fi
+
+          if [ -d modules/lib/modules ]; then
+              mkdir -p AnyKernel3/modules
+              cp -r modules/lib/modules AnyKernel3/modules/
+          fi
+
+          # Modifikasi agar script installer mengenali target partisi Mi 5 (gemini)
+          sed -i 's/properties() {/properties() {\nkernel.string=NetHunter Kernel Mi5/g' AnyKernel3/anykernel.sh
+          sed -i 's|block=.*|block=/dev/block/bootdevice/by-name/boot;|g' AnyKernel3/anykernel.sh
+          sed -i 's/is_slot_device=0/is_slot_device=0/g' AnyKernel3/anykernel.sh
+
+      ###########################################################
+      # Create ZIP
+      ###########################################################
+
+      - name: Pack AnyKernel ZIP
+        run: |
+          cd AnyKernel3
+          zip -r9 ../NetHunter-Mi5-Kernel.zip *
+
+      ###########################################################
+      # Upload Artifacts
+      ###########################################################
+
+      - name: Upload Kernel ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: NetHunter-Murni-Mi5-Gemini-Final
-          path: arch/arm64/boot/Image.gz-dtb
+          name: NetHunter-Mi5-Kernel
+          path: NetHunter-Mi5-Kernel.zip
+
+      - name: Upload Modules
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kernel-Modules
+          path: modules
+
+      - name: Upload Config
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kernel-Config
+          path: out/.config
