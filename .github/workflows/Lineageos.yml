@@ -32,19 +32,33 @@ jobs:
           sudo apt update
           sudo apt install -y \
             git bc bison flex build-essential libssl-dev libelf-dev \
-            libncurses5-dev python3 unzip zip rsync curl wget cpio
+            libncurses5-dev python3 unzip zip rsync curl wget cpio \
+            gcc-arm-linux-gnueabi
 
       ###########################################################
-      # Download AOSP Clang Toolchain
-      # (Diperlukan untuk menghindari DTC error & kecocokan LineageOS)
+      # Download AOSP Clang Toolchain (Dengan Caching)
       ###########################################################
+
+      - name: Cache AOSP Clang
+        id: cache-clang
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/clang
+          key: aosp-clang-r530567-v1
 
       - name: Download AOSP Clang
+        if: steps.cache-clang.outputs.cache-hit != 'true'
         run: |
           mkdir -p $GITHUB_WORKSPACE/clang
           cd $GITHUB_WORKSPACE/clang
+          echo "Downloading Clang from Google Server..."
           curl -LO https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/main/clang-r530567.tar.gz
+          echo "Extracting Clang..."
           tar -xzf clang-r530567.tar.gz
+          rm clang-r530567.tar.gz
+
+      - name: Add Clang to PATH
+        run: |
           echo "$GITHUB_WORKSPACE/clang/bin" >> $GITHUB_PATH
 
       ###########################################################
@@ -72,14 +86,12 @@ jobs:
 
       ###########################################################
       # Hotfix: Patch Wireless Headers
-      # (Mengatasi macro undeclared pada mac80211 dan rtl8188eus)
       ###########################################################
 
       - name: Patch Wireless Headers
         run: |
           echo "Injecting missing legacy wireless definitions..."
           
-          # Menyuntikkan definisi macro ke header wireless utama kernel
           cat << 'EOF' >> include/net/cfg80211.h
 
           /* NetHunter Fixes for Legacy Wireless Compile */
@@ -216,6 +228,7 @@ jobs:
             CC=clang \
             CLANG_TRIPLE=aarch64-linux-gnu- \
             CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             LLVM=1 \
             LLVM_IAS=1
 
@@ -249,6 +262,7 @@ jobs:
             CC=clang \
             CLANG_TRIPLE=aarch64-linux-gnu- \
             CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             LLVM=1 \
             LLVM_IAS=1 \
             modules
@@ -272,7 +286,7 @@ jobs:
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git AnyKernel3
 
       ###########################################################
-      # Prepare AnyKernel3 (Termasuk Konfigurasi Partisi Mi 5)
+      # Prepare AnyKernel3
       ###########################################################
 
       - name: Prepare AnyKernel3
