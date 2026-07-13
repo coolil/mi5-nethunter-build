@@ -7,11 +7,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      # PENTING: Jika file yml ini di luar repo kernel, ganti dengan repo Anda:
-      # dengan:
-      #   repository: 'username/nama_repo_kernel_anda'
+      # Mengunduh langsung source kernel resmi LineageOS msm8996 cabang 22.2
       - name: Checkout LineageOS Kernel Source
         uses: actions/checkout@v4
+        with:
+          repository: 'LineageOS/android_kernel_xiaomi_msm8996'
+          ref: 'lineage-22.2'
 
       - name: Install Dependencies & Python Setup
         run: |
@@ -34,11 +35,13 @@ jobs:
           echo "    MEMULAI PATCHING PRESISI DRIVER INTERNAL MI 5   "
           echo "===================================================="
           
-          # Jalankan skrip bawaan Anda terlebih dahulu (jika ada)
-          chmod +x enable_nethunter_full.sh 2>/dev/null || true
-          ./enable_nethunter_full.sh 2>/dev/null || true
+          # Jalankan skrip pembantu lokal hanya jika file tersebut ada di repo Anda
+          if [ -f "enable_nethunter_full.sh" ]; then
+            chmod +x enable_nethunter_full.sh
+            ./enable_nethunter_full.sh || true
+          fi
           
-          # Jalur file utama driver qcacld-2.0
+          # Jalur file utama driver qcacld-2.0 hasil unduhan LineageOS repo
           HDD_MAIN="drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_main.c"
           HDD_CFG="drivers/staging/qcacld-2.0/CORE/HDD/src/wlan_hdd_cfg80211.c"
           
