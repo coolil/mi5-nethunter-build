@@ -1,4 +1,4 @@
-Name: Build NetHunter Kernel Mi5
+name: Build NetHunter Kernel Mi5
 
 on:
   workflow_dispatch:
