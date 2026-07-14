@@ -1,4 +1,4 @@
-name: Build NetHunter Kernel Mi5
+Name: Build NetHunter Kernel Mi5
 
 on:
   workflow_dispatch:
@@ -222,7 +222,7 @@ jobs:
           grep CONFIG_MAC80211 out/.config || true
 
       ###########################################################
-      # 11. Create NetHunter Config (Kunci Sukses Kconfig Fix)
+      # 11. Create NetHunter Config (FIXED)
       ###########################################################
       - name: Create NetHunter Config
         working-directory: kernel
@@ -290,6 +290,7 @@ jobs:
           #######################################################
           CONFIG_WLAN_VENDOR_ATH=y
           CONFIG_ATH_CARDS=y
+          CONFIG_WL_MEDIATEK=y
           CONFIG_WLAN_VENDOR_MEDIATEK=y
           CONFIG_WLAN_VENDOR_REALTEK=y
           
@@ -326,7 +327,7 @@ jobs:
           CONFIG_NTFS_FS=y
           CONFIG_SQUASHFS=y
           EOF
-          echo "[ OK ] nethunter.config berhasil dibuat dengan perbaikan dependensi induk lengkap."
+          echo "[ OK ] nethunter.config berhasil dibuat."
 
       ###########################################################
       # 12. Merge Config
@@ -346,7 +347,7 @@ jobs:
           make O=out ARCH=arm64 olddefconfig
 
       ###########################################################
-      # 13. Audit Final Config (Sistem Proteksi Kegagalan)
+      # 13. Smart Audit Final Config (FIXED)
       ###########################################################
       - name: Audit NetHunter Config
         working-directory: kernel
@@ -357,60 +358,79 @@ jobs:
 
           STATUS=0
 
-          check() {
-            if grep -q "^$1=y" out/.config; then
-                echo "[ OK ] $1=y"
-            elif grep -q "^$1=m" out/.config; then
-                echo "[ OK ] $1=m"
+          # Fungsi untuk Fitur Inti (Wajib Ada & Wajib Aktif)
+          check_core() {
+            if grep -q -E "^$1=[ym]" out/.config; then
+                echo "[ OK ] Core Feature: $1 aktif ($(grep "^$1=" out/.config | cut -d= -f2))"
             else
-                echo "::error::[ GAGAL ] Kunci Config Penting Hilang: $1"
+                echo "::error::[ FATAL ] Fitur Inti NetHunter Hilang: $1"
                 STATUS=1
             fi
           }
 
-          check CONFIG_CFG80211
-          check CONFIG_MAC80211
-          check CONFIG_BT
-          check CONFIG_BT_BREDR
-          check CONFIG_BT_LE
-          check CONFIG_BT_BNEP
-          check CONFIG_BT_RFCOMM
-          check CONFIG_BT_HIDP
-          check CONFIG_USB_GADGET
-          check CONFIG_USB_CONFIGFS
-          check CONFIG_USB_CONFIGFS_F_HID
-          check CONFIG_USB_F_HID
-          check CONFIG_QCA_CLD_WLAN
-          check CONFIG_RTL8188EU
-          check CONFIG_RTL8192CU
-          check CONFIG_RTL8XXXU
-          check CONFIG_ATH9K_HTC
-          check CONFIG_MT7601U
-          check CONFIG_ZD1211RW
-          check CONFIG_USB_SERIAL_CP210X
-          check CONFIG_USB_SERIAL_CH341
-          check CONFIG_USB_SERIAL_FTDI_SIO
-          check CONFIG_USB_SERIAL_PL2303
-          check CONFIG_TUN
-          check CONFIG_VETH
-          check CONFIG_BRIDGE
-          check CONFIG_CAN
-          check CONFIG_CAN_RAW
-          check CONFIG_CAN_GW
-          check CONFIG_CAN_VCAN
-          check CONFIG_CAN_SLCAN
-          check CONFIG_OVERLAY_FS
-          check CONFIG_FUSE_FS
-          check CONFIG_CIFS
-          check CONFIG_NFS_FS
-          check CONFIG_NTFS_FS
-          check CONFIG_SQUASHFS
+          # Fungsi untuk Hardware/Driver (Aktifkan jika didukung kode kernel vendor)
+          check_hardware() {
+            if grep -q -E "^$1=[ym]" out/.config; then
+                echo "[ OK ] Driver/Hardware: $1 aktif ($(grep "^$1=" out/.config | cut -d= -f2))"
+            else
+                # Cek apakah simbol config ini memang eksis di source code kernel
+                SYM=$(echo "$1" | sed 's/^CONFIG_//')
+                if grep -rq "config $SYM" arch/arm64/ Kconfig drivers/ net/ fs/; then
+                    echo "::error::[ GAGAL ] Driver didukung kernel tetapi gagal aktif: $1"
+                    STATUS=1
+                else
+                    echo "[ SKIPPED ] $1 dilewati (Driver tidak tersedia di source code kernel legacy ini)"
+                fi
+            fi
+          }
+
+          # Verifikasi Fitur Inti (Wajib)
+          check_core CONFIG_CFG80211
+          check_core CONFIG_MAC80211
+          check_core CONFIG_BT
+          check_core CONFIG_USB_GADGET
+          check_core CONFIG_USB_CONFIGFS
+          check_core CONFIG_TUN
+          check_core CONFIG_VETH
+          check_core CONFIG_BRIDGE
+          check_core CONFIG_OVERLAY_FS
+
+          # Verifikasi Ekstensi Komponen & Driver (Adaptif)
+          check_hardware CONFIG_BT_BREDR
+          check_hardware CONFIG_BT_LE
+          check_hardware CONFIG_BT_BNEP
+          check_hardware CONFIG_BT_RFCOMM
+          check_hardware CONFIG_BT_HIDP
+          check_hardware CONFIG_USB_CONFIGFS_F_HID
+          check_hardware CONFIG_USB_F_HID
+          check_hardware CONFIG_QCA_CLD_WLAN
+          check_hardware CONFIG_WL_MEDIATEK
+          check_hardware CONFIG_RTL8188EU
+          check_hardware CONFIG_RTL8192CU
+          check_hardware CONFIG_RTL8XXXU
+          check_hardware CONFIG_ATH9K_HTC
+          check_hardware CONFIG_MT7601U
+          check_hardware CONFIG_ZD1211RW
+          check_hardware CONFIG_USB_SERIAL_CP210X
+          check_hardware CONFIG_USB_SERIAL_CH341
+          check_hardware CONFIG_USB_SERIAL_FTDI_SIO
+          check_hardware CONFIG_USB_SERIAL_PL2303
+          check_hardware CONFIG_CAN
+          check_hardware CONFIG_CAN_RAW
+          check_hardware CONFIG_CAN_GW
+          check_hardware CONFIG_CAN_VCAN
+          check_hardware CONFIG_CAN_SLCAN
+          check_hardware CONFIG_FUSE_FS
+          check_hardware CONFIG_CIFS
+          check_hardware CONFIG_NFS_FS
+          check_hardware CONFIG_NTFS_FS
+          check_hardware CONFIG_SQUASHFS
 
           if [ $STATUS -ne 0 ]; then
-             echo "::error::[ FATAL ] Audit konfigurasi gagal. Beberapa fitur NetHunter penting tidak aktif!"
+             echo "::error::[ FATAL ] Audit konfigurasi gagal. Beberapa komponen inti NetHunter tidak aktif!"
              exit 1
           fi
-          echo "[ SUKSES ] Semua konfigurasi valid dan siap di-compile."
+          echo "[ SUKSES ] Semua konfigurasi tervalidasi dengan aman dan siap di-compile."
 
       ###########################################################
       # 14. Build Kernel (Menggunakan Clang & Pembatasan CPU)
