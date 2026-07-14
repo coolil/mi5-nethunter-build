@@ -222,7 +222,7 @@ jobs:
           grep CONFIG_MAC80211 out/.config || true
 
       ###########################################################
-      # 11. Create NetHunter Config
+      # 11. Create NetHunter Config (Kunci Sukses Kconfig Fix)
       ###########################################################
       - name: Create NetHunter Config
         working-directory: kernel
@@ -286,8 +286,13 @@ jobs:
           CONFIG_USB_SERIAL_PL2303=m
 
           #######################################################
-          ## WiFi Adapter
+          ## WiFi Adapter & Structural Kconfig Dependencies
           #######################################################
+          CONFIG_WLAN_VENDOR_ATH=y
+          CONFIG_ATH_CARDS=y
+          CONFIG_WLAN_VENDOR_MEDIATEK=y
+          CONFIG_WLAN_VENDOR_REALTEK=y
+          
           CONFIG_RTL8188EU=m
           CONFIG_RTL8192CU=m
           CONFIG_RTL8XXXU=m
@@ -321,7 +326,7 @@ jobs:
           CONFIG_NTFS_FS=y
           CONFIG_SQUASHFS=y
           EOF
-          echo "[ OK ] nethunter.config berhasil dibuat."
+          echo "[ OK ] nethunter.config berhasil dibuat dengan perbaikan dependensi induk lengkap."
 
       ###########################################################
       # 12. Merge Config
@@ -414,7 +419,6 @@ jobs:
         working-directory: kernel
         run: |
           echo "=== MEMULAI KOMPILASI KERNEL ==="
-          # Membatasi ke -j2 untuk mencegah kehabisan memori (OOM) pada runner standar github
           make -j2 O=out ARCH=arm64 \
             CC=clang \
             CLANG_TRIPLE=aarch64-linux-gnu- \
@@ -473,10 +477,9 @@ jobs:
           echo "=== BERKAS MODUL YANG BERHASIL DICOMPILE ==="
           find ../modules_out -name "*.ko"
           
-          # Hitung jumlah file .ko, jika 0 maka peringatkan pengguna
           KO_COUNT=$(find ../modules_out -name "*.ko" | wc -l)
           if [ "$KO_COUNT" -eq 0 ]; then
-             echo "::warning::[ PERINGATAN ] Tidak ada berkas modul .ko yang dibuat! Pastikan opsi driver diset sebagai Module (=m)."
+             echo "::warning::[ PERINGATAN ] Tidak ada berkas modul .ko yang dibuat!"
           else
              echo "[ OK ] Ditemukan $KO_COUNT driver .ko siap pakai."
           fi
@@ -490,19 +493,16 @@ jobs:
           mkdir -p AnyKernel3
           unzip Gemini-MonitorKernel.zip -d AnyKernel3
 
-          # Validasi struktur hasil ekstrak berkas ZIP Anda
           if [ ! -f AnyKernel3/anykernel.sh ]; then
              echo "::error::[ FATAL ] File anykernel.sh tidak ditemukan di dalam ZIP template Anda!"
              exit 1
           fi
 
           echo "=== MEMBERSIHKAN INTEGRASI LAMA ==="
-          # Hapus sisa kernel lama dan modul lama agar bersih
           rm -f AnyKernel3/Image.gz-dtb AnyKernel3/Image.gz AnyKernel3/Image AnyKernel3/dtb AnyKernel3/dt.img
           rm -rf AnyKernel3/modules/*
 
           echo "=== MENYUNTIKKAN KERNEL BARU ==="
-          # Salin Kernel Image baru hasil kompilasi ke AnyKernel3
           if [ -f kernel/out/arch/arm64/boot/Image.gz-dtb ]; then
               cp kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
               echo "[ OK ] Image.gz-dtb berhasil disuntikkan."
@@ -512,10 +512,8 @@ jobs:
           fi
 
           echo "=== MENYUNTIKKAN MODUL BARU ==="
-          # Cari semua file modul .ko yang sudah di-compile dan taruh ke folder modules AnyKernel3
           if [ -d modules_out/lib/modules ]; then
               mkdir -p AnyKernel3/modules
-              # Mengambil semua file modul .ko secara rekursif dan menaruhnya ke dalam folder modules AnyKernel3
               find modules_out/ -name "*.ko" -exec cp {} AnyKernel3/modules/ \;
               echo "[ OK ] Semua driver baru (*.ko) berhasil dimasukkan ke AnyKernel3/modules/."
               ls -l AnyKernel3/modules/
