@@ -14,19 +14,39 @@ jobs:
     steps:
 
       ###########################################################
-      # Checkout Kernel
+      # 1. Checkout Repositori Anda Sendiri (Untuk Mengakses ZIP Lokal)
       ###########################################################
+      - name: Checkout User Repository
+        uses: actions/checkout@v4
 
-      - name: Checkout Kernel
+      ###########################################################
+      # 2. Validasi Keberadaan Template ZIP Lokal Sebelum Memulai
+      ###########################################################
+      - name: Validate Local ZIP Template
+        run: |
+          echo "=== VALIDASI TEMPLATE ZIP ==="
+          if [ -f "Gemini-MonitorKernel.zip" ]; then
+            echo "[ OK ] Gemini-MonitorKernel.zip ditemukan di root repositori Anda."
+            ls -lh Gemini-MonitorKernel.zip
+          else
+            echo "::error::[ FATAL ] Gemini-MonitorKernel.zip TIDAK ditemukan di root repositori Anda!"
+            echo "Pastikan berkas ZIP tersebut sudah dicommit dan dipush ke cabang (branch) utama Anda."
+            exit 1
+          fi
+
+      ###########################################################
+      # 3. Checkout Source Kernel ke Sub-Folder Terisolasi
+      ###########################################################
+      - name: Checkout Kernel Source
         uses: actions/checkout@v4
         with:
           repository: LineageOS/android_kernel_xiaomi_msm8996
           ref: lineage-22.2
+          path: kernel
 
       ###########################################################
-      # Install Packages
+      # 4. Install Packages & Build Tools
       ###########################################################
-
       - name: Install Packages
         run: |
           sudo apt update
@@ -36,10 +56,8 @@ jobs:
             gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi
 
       ###########################################################
-      # Download AOSP Clang Toolchain (Dengan Caching)
-      # (Mencegah DTC Syntax Error & Kompatibel dengan LineageOS)
+      # 5. Download & Cache AOSP Clang Toolchain
       ###########################################################
-
       - name: Cache AOSP Clang
         id: cache-clang
         uses: actions/cache@v4
@@ -58,16 +76,21 @@ jobs:
           tar -xzf clang-r530567.tar.gz
           rm clang-r530567.tar.gz
 
-      - name: Add Clang to PATH
+      - name: Add Clang to PATH & Validate compiler
         run: |
           echo "$GITHUB_WORKSPACE/clang/bin" >> $GITHUB_PATH
+          export PATH="$GITHUB_WORKSPACE/clang/bin:$PATH"
+          echo "=== VERIFIKASI COMPILER ==="
+          clang --version
+          aarch64-linux-gnu-gcc --version
 
       ###########################################################
-      # Clone RTL8188EUS Aircrack
+      # 6. Clone RTL8188EUS Aircrack (Di dalam folder kernel)
       ###########################################################
-
       - name: Clone RTL8188EUS
+        working-directory: kernel
         run: |
+          echo "=== INTEGRASI RTL8188EUS ==="
           rm -rf drivers/net/wireless/rtl8188eus
 
           git clone \
@@ -78,21 +101,22 @@ jobs:
           if ! grep -q rtl8188eus drivers/net/wireless/Makefile; then
             echo 'obj-$(CONFIG_RTL8188EU) += rtl8188eus/' \
             >> drivers/net/wireless/Makefile
+            echo "[ OK ] RTL8188EUS ditambahkan ke Makefile."
           fi
 
           if ! grep -q rtl8188eus drivers/net/wireless/Kconfig; then
             echo 'source "drivers/net/wireless/rtl8188eus/Kconfig"' \
             >> drivers/net/wireless/Kconfig
+            echo "[ OK ] RTL8188EUS ditambahkan ke Kconfig."
           fi
 
       ###########################################################
-      # Hotfix: Patch Wireless Headers
-      # (Mengatasi macro undeclared pada mac80211 dan rtl8188eus)
+      # 7. Hotfix: Patch Wireless Headers
       ###########################################################
-
       - name: Patch Wireless Headers
+        working-directory: kernel
         run: |
-          echo "Injecting missing legacy wireless definitions..."
+          echo "=== PATCH LEGACY WIRELESS DEFINITIONS ==="
           
           cat << 'EOF' >> include/net/cfg80211.h
 
@@ -110,110 +134,100 @@ jobs:
           #define IEEE80211_NUM_BANDS NUM_NL80211_BANDS
           #endif
           EOF
+          echo "[ OK ] cfg80211.h berhasil di-patch."
 
       ###########################################################
-      # Detect Defconfig
+      # 8. Detect Defconfig
       ###########################################################
-
       - name: Detect Defconfig
+        working-directory: kernel
         run: |
-          echo "===== AVAILABLE DEFCONFIG ====="
+          echo "=== MENDETEKSI DEFCONFIG ==="
           find arch -name "*defconfig"
 
           if [ -f arch/arm64/configs/vendor/xiaomi/mi8996_defconfig ]; then
             echo "DEFCONFIG=vendor/xiaomi/mi8996_defconfig" >> $GITHUB_ENV
+            echo "[ OK ] Menggunakan vendor/xiaomi/mi8996_defconfig"
           elif [ -f arch/arm64/configs/gemini_defconfig ]; then
             echo "DEFCONFIG=gemini_defconfig" >> $GITHUB_ENV
+            echo "[ OK ] Menggunakan gemini_defconfig"
           else
-            echo "Defconfig tidak ditemukan"
+            echo "::error::[ FATAL ] Defconfig target tidak ditemukan!"
             exit 1
           fi
 
       ###########################################################
-      # Audit Source Tree
+      # 9. Audit Source Tree
       ###########################################################
-
       - name: Audit Source Tree
+        working-directory: kernel
         run: |
           echo "==============================="
-          echo "Kernel Version"
+          echo "Audit Versi Kernel"
           echo "==============================="
           make kernelversion
 
           echo
           echo "==============================="
-          echo "QCACLD"
+          echo "Audit QCACLD & CNSS Drivers"
           echo "==============================="
           find drivers -iname "*qcacld*" || true
-
-          echo
-          echo "==============================="
-          echo "CNSS"
-          echo "==============================="
           find drivers -iname "*cnss*" || true
 
           echo
           echo "==============================="
-          echo "Wireless Drivers"
+          echo "Audit Driver Wireless Aktif"
           echo "==============================="
           ls -R drivers/net/wireless || true
 
           echo
           echo "==============================="
-          echo "Bluetooth"
+          echo "Audit Bluetooth Stack"
           echo "==============================="
           find net/bluetooth -name "Kconfig*"
-
-          echo
           grep -R "RFCOMM" net/bluetooth || true
-
-          echo
           grep -R "HIDP" net/bluetooth || true
 
           echo
           echo "==============================="
-          echo "USB ConfigFS"
+          echo "Audit USB ConfigFS & HID"
           echo "==============================="
           grep -R USB_CONFIGFS drivers include 2>/dev/null || true
-
-          echo
-          echo "==============================="
-          echo "USB HID"
-          echo "==============================="
           grep -R USB_F_HID drivers include 2>/dev/null || true
 
           echo
           echo "==============================="
-          echo "merge_config"
+          echo "Verifikasi Jalur Merge Config"
           echo "==============================="
-          find scripts -name merge_config.sh
-
-          echo
-          echo "==============================="
-          echo "ARM64 Config"
-          echo "==============================="
-          find arch/arm64/configs -type f
+          if [ -f scripts/kconfig/merge_config.sh ]; then
+            echo "[ OK ] merge_config.sh ditemukan."
+          else
+            echo "::error::[ FATAL ] merge_config.sh tidak ditemukan di jalur standar!"
+            exit 1
+          fi
 
       ###########################################################
-      # Generate Default Config
+      # 10. Generate Default Config
       ###########################################################
-
       - name: Generate Default Config
+        working-directory: kernel
         run: |
+          echo "=== MEMBUAT BASE CONFIG ==="
           make O=out ARCH=arm64 ${DEFCONFIG}
 
           echo
-          echo "===== DEFAULT CONFIG ====="
-          grep CONFIG_BT out/.config | head -30 || true
+          echo "=== BASE CONFIG PREVIEW ==="
+          grep CONFIG_BT out/.config | head -15 || true
           grep CONFIG_CFG80211 out/.config || true
           grep CONFIG_MAC80211 out/.config || true
 
       ###########################################################
-      # Create NetHunter Config
+      # 11. Create NetHunter Config
       ###########################################################
-
       - name: Create NetHunter Config
+        working-directory: kernel
         run: |
+          echo "=== MENULIS NETHUNTER CONFIG ==="
           cat > nethunter.config <<'EOF'
           #######################################################
           ## Modules
@@ -307,13 +321,15 @@ jobs:
           CONFIG_NTFS_FS=y
           CONFIG_SQUASHFS=y
           EOF
+          echo "[ OK ] nethunter.config berhasil dibuat."
 
       ###########################################################
-      # Merge Config
+      # 12. Merge Config
       ###########################################################
-
       - name: Merge NetHunter Config
+        working-directory: kernel
         run: |
+          echo "=== PROSES MERGE CONFIG ==="
           chmod +x scripts/kconfig/merge_config.sh
 
           scripts/kconfig/merge_config.sh \
@@ -325,14 +341,16 @@ jobs:
           make O=out ARCH=arm64 olddefconfig
 
       ###########################################################
-      # Audit Final Config
+      # 13. Audit Final Config (Sistem Proteksi Kegagalan)
       ###########################################################
-
       - name: Audit NetHunter Config
+        working-directory: kernel
         run: |
-          echo "==============================="
-          echo "FINAL CONFIG"
-          echo "==============================="
+          echo "========================================="
+          echo "VERIFIKASI AKHIR CONFIG SEBELUM BUILD"
+          echo "========================================="
+
+          STATUS=0
 
           check() {
             if grep -q "^$1=y" out/.config; then
@@ -340,7 +358,8 @@ jobs:
             elif grep -q "^$1=m" out/.config; then
                 echo "[ OK ] $1=m"
             else
-                echo "[FAIL] $1"
+                echo "::error::[ GAGAL ] Kunci Config Penting Hilang: $1"
+                STATUS=1
             fi
           }
 
@@ -382,41 +401,21 @@ jobs:
           check CONFIG_NTFS_FS
           check CONFIG_SQUASHFS
 
-          echo
-          echo "==============================="
-          echo "Bluetooth"
-          echo "==============================="
-          grep CONFIG_BT out/.config || true
-
-          echo
-          echo "==============================="
-          echo "Wireless"
-          echo "==============================="
-          grep CONFIG_CFG80211 out/.config || true
-          grep CONFIG_MAC80211 out/.config || true
-
-          echo
-          echo "==============================="
-          echo "USB"
-          echo "==============================="
-          grep CONFIG_USB_CONFIGFS out/.config || true
-
-          echo
-          echo "==============================="
-          echo "RTL8188EU"
-          echo "==============================="
-          grep CONFIG_RTL8188EU out/.config || true
+          if [ $STATUS -ne 0 ]; then
+             echo "::error::[ FATAL ] Audit konfigurasi gagal. Beberapa fitur NetHunter penting tidak aktif!"
+             exit 1
+          fi
+          echo "[ SUKSES ] Semua konfigurasi valid dan siap di-compile."
 
       ###########################################################
-      # Build Kernel (Menggunakan Clang & GNU Binutils Lama)
+      # 14. Build Kernel (Menggunakan Clang & Pembatasan CPU)
       ###########################################################
-
-      - name: Build Kernel
+      - name: Build Kernel Image
+        working-directory: kernel
         run: |
-          export ARCH=arm64
-          export SUBARCH=arm64
-
-          make -j$(nproc) O=out ARCH=arm64 \
+          echo "=== MEMULAI KOMPILASI KERNEL ==="
+          # Membatasi ke -j2 untuk mencegah kehabisan memori (OOM) pada runner standar github
+          make -j2 O=out ARCH=arm64 \
             CC=clang \
             CLANG_TRIPLE=aarch64-linux-gnu- \
             CROSS_COMPILE=aarch64-linux-gnu- \
@@ -424,32 +423,36 @@ jobs:
             KCFLAGS="-w"
 
       ###########################################################
-      # Verify Build
+      # 15. Verifikasi Keberadaan & Integritas File Kernel Image
       ###########################################################
-
       - name: Verify Kernel Image
+        working-directory: kernel
         run: |
-          echo "===== OUTPUT ====="
+          echo "=== VERIFIKASI OUTPUT KERNEL ==="
           find out/arch/arm64/boot -type f
 
           if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
-              echo "Kernel Image.gz-dtb ditemukan."
+              echo "[ OK ] Kernel Image.gz-dtb berhasil dibuat."
+              ls -lh out/arch/arm64/boot/Image.gz-dtb
           elif [ -f out/arch/arm64/boot/Image.gz ]; then
-              echo "Kernel Image.gz ditemukan."
+              echo "[ WARN ] Hanya mendeteksi Image.gz tanpa DTB bawaan."
+              ls -lh out/arch/arm64/boot/Image.gz
           elif [ -f out/arch/arm64/boot/Image ]; then
-              echo "Kernel Image ditemukan."
+              echo "[ WARN ] Hanya mendeteksi Image mentah (uncompressed)."
+              ls -lh out/arch/arm64/boot/Image
           else
-              echo "Kernel gagal dibuat."
+              echo "::error::[ FATAL ] Gagal! Tidak ada file Image kernel yang terbuat!"
               exit 1
           fi
 
       ###########################################################
-      # Build Modules
+      # 16. Build Modules
       ###########################################################
-
       - name: Build Modules
+        working-directory: kernel
         run: |
-          make -j$(nproc) O=out ARCH=arm64 \
+          echo "=== KOMPILASI MODUL DRIVER (*.ko) ==="
+          make -j2 O=out ARCH=arm64 \
             CC=clang \
             CLANG_TRIPLE=aarch64-linux-gnu- \
             CROSS_COMPILE=aarch64-linux-gnu- \
@@ -458,114 +461,107 @@ jobs:
             modules
 
       ###########################################################
-      # Install Modules
+      # 17. Install & Validasi Modul Eksternal
       ###########################################################
-
       - name: Install Modules
+        working-directory: kernel
         run: |
-          mkdir -p modules
-          make O=out ARCH=arm64 INSTALL_MOD_PATH=modules modules_install
-          find modules -name "*.ko"
+          echo "=== MEMASANG MODUL KERNEL ==="
+          mkdir -p ../modules_out
+          make O=out ARCH=arm64 INSTALL_MOD_PATH=../modules_out modules_install
+          
+          echo "=== BERKAS MODUL YANG BERHASIL DICOMPILE ==="
+          find ../modules_out -name "*.ko"
+          
+          # Hitung jumlah file .ko, jika 0 maka peringatkan pengguna
+          KO_COUNT=$(find ../modules_out -name "*.ko" | wc -l)
+          if [ "$KO_COUNT" -eq 0 ]; then
+             echo "::warning::[ PERINGATAN ] Tidak ada berkas modul .ko yang dibuat! Pastikan opsi driver diset sebagai Module (=m)."
+          else
+             echo "[ OK ] Ditemukan $KO_COUNT driver .ko siap pakai."
+          fi
 
       ###########################################################
-      # Download & Extract AnyKernel3 Template Milikmu
+      # 18. Bongkar & Siapkan AnyKernel3 Template Milikmu
       ###########################################################
-
-      - name: Download Custom AnyKernel3 Template
+      - name: Prepare AnyKernel3 from Local Template
         run: |
-          echo "Downloading proven AnyKernel3 template from your repository..."
-          
-          # Unduh berkas ZIP lama yang terbukti sukses dari repo kamu
-          curl -L "https://github.com/coolil/mi5-nethunter-build/raw/main/Gemini-MonitorKernel.zip" -o template.zip
-          
-          # Ekstrak berkas template
+          echo "=== MENGEKSTRAK TEMPLATE ZIP SUKSES ==="
           mkdir -p AnyKernel3
-          unzip template.zip -d AnyKernel3
-          rm -f template.zip
+          unzip Gemini-MonitorKernel.zip -d AnyKernel3
 
-          # Hapus sisa kernel lama dan modul lawas bawaan ZIP agar tidak tertukar
+          # Validasi struktur hasil ekstrak berkas ZIP Anda
+          if [ ! -f AnyKernel3/anykernel.sh ]; then
+             echo "::error::[ FATAL ] File anykernel.sh tidak ditemukan di dalam ZIP template Anda!"
+             exit 1
+          fi
+
+          echo "=== MEMBERSIHKAN INTEGRASI LAMA ==="
+          # Hapus sisa kernel lama dan modul lama agar bersih
           rm -f AnyKernel3/Image.gz-dtb AnyKernel3/Image.gz AnyKernel3/Image AnyKernel3/dtb AnyKernel3/dt.img
           rm -rf AnyKernel3/modules/*
 
-      ###########################################################
-      # Prepare AnyKernel3 (Inject Hasil Build Baru)
-      ###########################################################
-
-      - name: Prepare AnyKernel3
-        run: |
-          # Menyalin Kernel Image baru hasil kompilasi ke dalam folder AnyKernel3
-          if [ -f out/arch/arm64/boot/Image.gz-dtb ]; then
-              cp out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
-              echo "[ OK ] Image.gz-dtb copied."
-          elif [ -f out/arch/arm64/boot/Image.gz ]; then
-              cp out/arch/arm64/boot/Image.gz AnyKernel3/
-              echo "[ OK ] Image.gz copied."
-          else
-              cp out/arch/arm64/boot/Image AnyKernel3/
-              echo "[ OK ] Image (raw) copied."
+          echo "=== MENYUNTIKKAN KERNEL BARU ==="
+          # Salin Kernel Image baru hasil kompilasi ke AnyKernel3
+          if [ -f kernel/out/arch/arm64/boot/Image.gz-dtb ]; then
+              cp kernel/out/arch/arm64/boot/Image.gz-dtb AnyKernel3/
+              echo "[ OK ] Image.gz-dtb berhasil disuntikkan."
+          elif [ -f kernel/out/arch/arm64/boot/Image.gz ]; then
+              cp kernel/out/arch/arm64/boot/Image.gz AnyKernel3/
+              echo "[ OK ] Image.gz berhasil disuntikkan."
           fi
 
-          # Menyalin seluruh modul kernel eksternal (.ko) baru yang sukses dibuat
-          if [ -d modules/lib/modules ]; then
+          echo "=== MENYUNTIKKAN MODUL BARU ==="
+          # Cari semua file modul .ko yang sudah di-compile dan taruh ke folder modules AnyKernel3
+          if [ -d modules_out/lib/modules ]; then
               mkdir -p AnyKernel3/modules
-              cp -r modules/lib/modules AnyKernel3/modules/
-              echo "[ OK ] New kernel modules injected."
+              # Mengambil semua file modul .ko secara rekursif dan menaruhnya ke dalam folder modules AnyKernel3
+              find modules_out/ -name "*.ko" -exec cp {} AnyKernel3/modules/ \;
+              echo "[ OK ] Semua driver baru (*.ko) berhasil dimasukkan ke AnyKernel3/modules/."
+              ls -l AnyKernel3/modules/
           fi
 
       ###########################################################
-      # Create ZIP
+      # 19. Pack AnyKernel ZIP Baru
       ###########################################################
-
       - name: Pack AnyKernel ZIP
         run: |
+          echo "=== MENGEMAS KEMBALI KERNEL NETHUNTER ZIP ==="
           cd AnyKernel3
-          zip -r9 ../NetHunter-Mi5-Kernel.zip *
+          zip -r9 ../NetHunter-Mi5-Kernel-Fixed.zip *
 
       ###########################################################
-      # Build Summary
+      # 20. Build Summary & Validasi Akhir Berkas ZIP
       ###########################################################
-
       - name: Build Summary
         run: |
-          echo "=================================="
-          echo "NetHunter Kernel Build Summary"
-          echo "=================================="
+          echo "============================================="
+          echo "       LAPORAN AKHIR KOMPILASI KERNEL        "
+          echo "============================================="
           echo
-          echo "Kernel Image"
-          ls -lh out/arch/arm64/boot || true
+          echo "Ukuran File Flashable ZIP Akhir:"
+          if [ -f NetHunter-Mi5-Kernel-Fixed.zip ]; then
+             ls -lh NetHunter-Mi5-Kernel-Fixed.zip
+             echo "[ SUKSES ] Berkas zip berhasil diproduksi."
+          else
+             echo "::error::[ FATAL ] Berkas zip gagal dibuat pada langkah akhir!"
+             exit 1
+          fi
           echo
-          echo "Modules"
-          find modules -name "*.ko" || true
-          echo
-          echo "ZIP"
-          ls -lh NetHunter-Mi5-Kernel.zip
+          echo "Modul yang disuntikkan ke dalam ZIP:"
+          unzip -l NetHunter-Mi5-Kernel-Fixed.zip | grep -i "modules/" || echo "Tidak ada modul."
 
       ###########################################################
-      # Upload Kernel ZIP
+      # 21. Upload Artifact Hasil Build
       ###########################################################
-
       - name: Upload Kernel ZIP
         uses: actions/upload-artifact@v4
         with:
           name: NetHunter-Mi5-Kernel
-          path: NetHunter-Mi5-Kernel.zip
+          path: NetHunter-Mi5-Kernel-Fixed.zip
 
-      ###########################################################
-      # Upload Modules
-      ###########################################################
-
-      - name: Upload Modules
-        uses: actions/upload-artifact@v4
-        with:
-          name: Kernel-Modules
-          path: modules
-
-      ###########################################################
-      # Upload Build Config
-      ###########################################################
-
-      - name: Upload Config
+      - name: Upload Build Config
         uses: actions/upload-artifact@v4
         with:
           name: Kernel-Config
-          path: out/.config
+          path: kernel/out/.config
