@@ -1,1 +1,195 @@
+name: Bruce Firmware Builder
 
+on:
+  workflow_dispatch:
+    inputs:
+
+      branch:
+        description: Bruce branch / tag
+        required: true
+        default: main
+
+      board:
+        description: PlatformIO Environment
+        required: true
+        default: CYD-2432S028
+
+      startup:
+        description: Startup App
+        required: true
+        default: WebUI
+
+      clean:
+        description: Clean build
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+permissions:
+  contents: read
+
+jobs:
+
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Clone Bruce
+        run: |
+          git clone \
+            --depth=1 \
+            --branch "${{ inputs.branch }}" \
+            https://github.com/BruceDevices/firmware.git bruce
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: pio-${{ runner.os }}-${{ inputs.board }}
+
+      - name: Install PlatformIO
+        run: |
+          python -m pip install --upgrade pip
+          pip install platformio
+
+      - name: Patch Startup
+        run: |
+
+          cd bruce
+
+          sed -i \
+          "s/String startupApp = \"\";/String startupApp = \"${{ inputs.startup }}\";/" \
+          src/core/config.h
+
+          grep -n "startupApp" src/core/config.h
+
+      - name: Verify Patch
+        run: |
+          grep -q 'String startupApp = "${{ inputs.startup }}"' bruce/src/core/config.h
+
+      - name: Clean
+        if: inputs.clean == 'true'
+        run: |
+          cd bruce
+          pio run -t clean -e "${{ inputs.board }}"
+
+      - name: Build
+        run: |
+          cd bruce
+          pio run -e "${{ inputs.board }}" | tee ../build.log
+
+      - name: Prepare Package
+        run: |
+
+          ENV="${{ inputs.board }}"
+
+          mkdir package
+
+          cp bruce/.pio/build/$ENV/firmware.bin package/
+          cp bruce/.pio/build/$ENV/bootloader.bin package/
+          cp bruce/.pio/build/$ENV/partitions.bin package/
+
+          if [ -f bruce/.pio/build/$ENV/boot_app0.bin ]; then
+              cp bruce/.pio/build/$ENV/boot_app0.bin package/
+          fi
+
+          cp build.log package/
+
+          cat > package/build_info.txt <<EOF
+Bruce Firmware Builder
+
+Board   : ${{ inputs.board }}
+Branch  : ${{ inputs.branch }}
+Startup : ${{ inputs.startup }}
+
+Commit  : $(git -C bruce rev-parse --short HEAD)
+Date    : $(date -u)
+
+EOF
+
+          cat > package/flash_manual.txt <<EOF
+bootloader.bin  -> 0x1000
+partitions.bin  -> 0x8000
+boot_app0.bin   -> 0xE000
+firmware.bin    -> 0x10000
+EOF
+
+          cat > package/flash.sh <<'EOF'
+#!/bin/bash
+
+PORT=${1:-/dev/ttyUSB0}
+
+esptool.py \
+--chip esp32 \
+--baud 921600 \
+write_flash \
+-z \
+0x1000 bootloader.bin \
+0x8000 partitions.bin \
+0xE000 boot_app0.bin \
+0x10000 firmware.bin
+EOF
+
+          chmod +x package/flash.sh
+
+          cat > package/flash.bat <<'EOF'
+@echo off
+
+esptool.exe ^
+--chip esp32 ^
+--baud 921600 ^
+write_flash ^
+-z ^
+0x1000 bootloader.bin ^
+0x8000 partitions.bin ^
+0xE000 boot_app0.bin ^
+0x10000 firmware.bin
+
+pause
+EOF
+
+          (
+            cd package
+            sha256sum * > SHA256SUMS
+          )
+
+          ZIP="Bruce-${{ inputs.board }}-${{ inputs.startup }}-$(git -C bruce rev-parse --short HEAD).zip"
+
+          (
+            cd package
+            zip -9 -r "../$ZIP" .
+          )
+
+          echo "ZIP=$ZIP" >> $GITHUB_ENV
+
+      - name: Build Summary
+        run: |
+
+          echo "## Bruce Firmware Build" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Board | ${{ inputs.board }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Startup | ${{ inputs.startup }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch | ${{ inputs.branch }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | $(git -C bruce rev-parse --short HEAD) |" >> $GITHUB_STEP_SUMMARY
+          echo "| ZIP | $ZIP |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: BruceFirmware
+          path: ${{ env.ZIP }}
+          retention-days: 30
