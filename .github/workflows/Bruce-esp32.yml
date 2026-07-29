@@ -3,9 +3,8 @@ name: Bruce Firmware Builder
 on:
   workflow_dispatch:
     inputs:
-
       branch:
-        description: Bruce branch / tag
+        description: Bruce branch/tag
         required: true
         default: main
 
@@ -20,7 +19,7 @@ on:
         default: WebUI
 
       clean:
-        description: Clean build
+        description: Clean build (Hapus cache sebelumnya)
         required: true
         default: "false"
         type: choice
@@ -32,164 +31,212 @@ permissions:
   contents: read
 
 jobs:
-
   build:
-
     runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      PYTHONUNBUFFERED: "1"
+      PLATFORMIO_CORE_DIR: ~/.platformio
 
     steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-      - name: Clone Bruce
+      - name: Clone Bruce Firmware
+        shell: bash
         run: |
+          set -euxo pipefail
+
           git clone \
             --depth=1 \
+            --filter=blob:none \
             --branch "${{ inputs.branch }}" \
-            https://github.com/BruceDevices/firmware.git bruce
+            https://github.com/BruceDevices/firmware.git \
+            bruce
+
+          echo -e "\nLatest Commit:"
+          git -C bruce log -1 --oneline
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
 
-      - name: Cache PlatformIO
+      - name: Cache PlatformIO & Build Data
         uses: actions/cache@v4
         with:
           path: |
             ~/.platformio
             ~/.cache/pip
-          key: pio-${{ runner.os }}-${{ inputs.board }}
+            bruce/.pio
+          key: pio-${{ runner.os }}-${{ inputs.board }}-${{ hashFiles('bruce/platformio.ini') }}
+          restore-keys: |
+            pio-${{ runner.os }}-${{ inputs.board }}-
 
       - name: Install PlatformIO
+        shell: bash
         run: |
+          set -euxo pipefail
           python -m pip install --upgrade pip
           pip install platformio
+          pio --version
 
-      - name: Patch Startup
+      - name: Show Build Environment
+        shell: bash
         run: |
+          set -euxo pipefail
+          python --version
+          git --version
+          pio system info
+
+      - name: Verify & Patch Source Tree
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          test -f bruce/platformio.ini
+          test -f bruce/src/core/config.h
 
           cd bruce
 
+          # Gunakan regex .* agar tetap berfungsi meskipun default value di repo berubah
           sed -i \
-          "s/String startupApp = \"\";/String startupApp = \"${{ inputs.startup }}\";/" \
-          src/core/config.h
+            's/String startupApp = .*/String startupApp = "${{ inputs.startup }}";/' \
+            src/core/config.h
 
-          grep -n "startupApp" src/core/config.h
+          echo -e "\nPatch Verification:"
+          grep -n 'String startupApp' src/core/config.h
 
-      - name: Verify Patch
-        run: |
-          grep -q 'String startupApp = "${{ inputs.startup }}"' bruce/src/core/config.h
-
-      - name: Clean
+      - name: Clean Build (If Requested)
         if: inputs.clean == 'true'
+        shell: bash
         run: |
+          set -euxo pipefail
           cd bruce
           pio run -t clean -e "${{ inputs.board }}"
 
-      - name: Build
+      - name: Compile Firmware
+        shell: bash
         run: |
+          set -euxo pipefail
           cd bruce
-          pio run -e "${{ inputs.board }}" | tee ../build.log
+          pio run -e "${{ inputs.board }}" 2>&1 | tee ../build.log
 
       - name: Prepare Package
+        shell: bash
         run: |
+          set -euxo pipefail
 
           ENV="${{ inputs.board }}"
+          BUILD="bruce/.pio/build/$ENV"
+          mkdir -p package
 
-          mkdir package
-
-          cp bruce/.pio/build/$ENV/firmware.bin package/
-          cp bruce/.pio/build/$ENV/bootloader.bin package/
-          cp bruce/.pio/build/$ENV/partitions.bin package/
-
-          if [ -f bruce/.pio/build/$ENV/boot_app0.bin ]; then
-              cp bruce/.pio/build/$ENV/boot_app0.bin package/
-          fi
-
+          # Copy binaries
+          for f in firmware.bin bootloader.bin partitions.bin boot_app0.bin firmware.elf firmware.map; do
+            if [ -f "$BUILD/$f" ]; then
+              cp "$BUILD/$f" package/
+            fi
+          done
           cp build.log package/
 
-          cat > package/build_info.txt <<EOF
-Bruce Firmware Builder
+          # Gather Metadata
+          SIZE=$(du -h "$BUILD/firmware.bin" | cut -f1)
+          COMMIT=$(git -C bruce rev-parse --short HEAD)
+          DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          ZIP="Bruce-${{ inputs.board }}-${COMMIT}.zip"
 
+          # 1. Build Info
+          cat <<EOF > package/build_info.txt
+Bruce Firmware Builder
+======================
 Board   : ${{ inputs.board }}
 Branch  : ${{ inputs.branch }}
 Startup : ${{ inputs.startup }}
 
-Commit  : $(git -C bruce rev-parse --short HEAD)
-Date    : $(date -u)
-
+Commit  : ${COMMIT}
+Date    : ${DATE}
+Size    : ${SIZE}
 EOF
 
-          cat > package/flash_manual.txt <<EOF
-bootloader.bin  -> 0x1000
-partitions.bin  -> 0x8000
-boot_app0.bin   -> 0xE000
-firmware.bin    -> 0x10000
-EOF
+          # 2. Dynamic Flash Arguments
+          FLASH_ARGS="0x1000 bootloader.bin 0x8000 partitions.bin"
+          if [ -f "package/boot_app0.bin" ]; then
+            FLASH_ARGS="$FLASH_ARGS 0xE000 boot_app0.bin"
+          fi
+          FLASH_ARGS="$FLASH_ARGS 0x10000 firmware.bin"
 
-          cat > package/flash.sh <<'EOF'
+          # 3. Flash Scripts (Bash & Batch)
+          cat <<EOF > package/flash.sh
 #!/bin/bash
-
-PORT=${1:-/dev/ttyUSB0}
-
-esptool.py \
---chip esp32 \
---baud 921600 \
-write_flash \
--z \
-0x1000 bootloader.bin \
-0x8000 partitions.bin \
-0xE000 boot_app0.bin \
-0x10000 firmware.bin
+PORT=\${1:-/dev/ttyUSB0}
+esptool.py --chip esp32 --baud 921600 write_flash -z $FLASH_ARGS
 EOF
-
           chmod +x package/flash.sh
 
-          cat > package/flash.bat <<'EOF'
+          cat <<EOF > package/flash.bat
 @echo off
-
-esptool.exe ^
---chip esp32 ^
---baud 921600 ^
-write_flash ^
--z ^
-0x1000 bootloader.bin ^
-0x8000 partitions.bin ^
-0xE000 boot_app0.bin ^
-0x10000 firmware.bin
-
+esptool.exe --chip esp32 --baud 921600 write_flash -z $FLASH_ARGS
 pause
 EOF
 
+          cat <<EOF > package/flash_manual.txt
+Flash Addresses (Manual)
+========================
+bootloader.bin  -> 0x1000
+partitions.bin  -> 0x8000
+boot_app0.bin   -> 0xE000 (jika ada)
+firmware.bin    -> 0x10000
+
+Command:
+esptool.py --chip esp32 --baud 921600 write_flash -z $FLASH_ARGS
+EOF
+
+          # 4. Generate Checksums
           (
             cd package
-            sha256sum * > SHA256SUMS
+            find . -maxdepth 1 -type f ! -name SHA256SUMS -print0 | xargs -0 sha256sum > SHA256SUMS
           )
 
-          ZIP="Bruce-${{ inputs.board }}-${{ inputs.startup }}-$(git -C bruce rev-parse --short HEAD).zip"
-
+          # 5. Create ZIP
           (
             cd package
-            zip -9 -r "../$ZIP" .
+            zip -9 -r "../${ZIP}" .
           )
 
-          echo "ZIP=$ZIP" >> $GITHUB_ENV
+          # Export ke Github Env
+          echo "ZIP=${ZIP}" >> "$GITHUB_ENV"
+          echo "SIZE=${SIZE}" >> "$GITHUB_ENV"
+          echo "COMMIT=${COMMIT}" >> "$GITHUB_ENV"
 
-      - name: Build Summary
-        run: |
-
-          echo "## Bruce Firmware Build" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Board | ${{ inputs.board }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Startup | ${{ inputs.startup }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Branch | ${{ inputs.branch }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Commit | $(git -C bruce rev-parse --short HEAD) |" >> $GITHUB_STEP_SUMMARY
-          echo "| ZIP | $ZIP |" >> $GITHUB_STEP_SUMMARY
-
-      - name: Upload ZIP
+      - name: Upload ZIP Release
         uses: actions/upload-artifact@v4
         with:
-          name: BruceFirmware
+          name: BruceFirmware-${{ inputs.board }}
           path: ${{ env.ZIP }}
+          if-no-files-found: error
           retention-days: 30
+
+      - name: Upload Build Directory (Debug)
+        uses: actions/upload-artifact@v4
+        with:
+          name: BuildFiles-${{ inputs.board }}
+          path: bruce/.pio/build/${{ inputs.board }}
+          if-no-files-found: warn
+          retention-days: 7 # Dikurangi menjadi 7 hari untuk menghemat storage Github
+
+      - name: Build Summary
+        shell: bash
+        run: |
+          {
+            echo "## ✅ Bruce Firmware Build Successful"
+            echo
+            echo "| Parameter | Value |"
+            echo "|-----------|-------|"
+            echo "| **Board** | \`${{ inputs.board }}\` |"
+            echo "| **Branch** | \`${{ inputs.branch }}\` |"
+            echo "| **Startup** | \`${{ inputs.startup }}\` |"
+            echo "| **Commit** | \`${{ env.COMMIT }}\` |"
+            echo "| **Firmware Size** | \`${{ env.SIZE }}\` |"
+            echo "| **Artifact** | \`${{ env.ZIP }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
