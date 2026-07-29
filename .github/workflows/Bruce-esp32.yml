@@ -61,7 +61,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
 
       - name: Cache PlatformIO & Build Data
         uses: actions/cache@v4
@@ -70,8 +69,10 @@ jobs:
             ~/.platformio
             ~/.cache/pip
             bruce/.pio
-          key: pio-${{ runner.os }}-${{ inputs.board }}-${{ hashFiles('bruce/platformio.ini') }}
+          # Menggunakan run_id agar cache selalu diperbarui setelah kompilasi selesai
+          key: pio-${{ runner.os }}-${{ inputs.board }}-${{ inputs.branch }}-${{ github.run_id }}
           restore-keys: |
+            pio-${{ runner.os }}-${{ inputs.board }}-${{ inputs.branch }}-
             pio-${{ runner.os }}-${{ inputs.board }}-
 
       - name: Install PlatformIO
@@ -100,13 +101,16 @@ jobs:
 
           cd bruce
 
-          # Gunakan regex .* agar tetap berfungsi meskipun default value di repo berubah
-          sed -i \
-            's/String startupApp = .*/String startupApp = "${{ inputs.startup }}";/' \
+          # Regex robust menangani spasi
+          sed -Ei \
+            's#String[[:space:]]+startupApp[[:space:]]*=.*#String startupApp = "${{ inputs.startup }}";#' \
             src/core/config.h
 
           echo -e "\nPatch Verification:"
           grep -n 'String startupApp' src/core/config.h
+
+          # Fail-fast jika patch gagal
+          grep -q "\"${{ inputs.startup }}\"" src/core/config.h
 
       - name: Clean Build (If Requested)
         if: inputs.clean == 'true'
@@ -147,17 +151,17 @@ jobs:
           ZIP="Bruce-${{ inputs.board }}-${COMMIT}.zip"
 
           # 1. Build Info
-          cat <<EOF > package/build_info.txt
-Bruce Firmware Builder
-======================
-Board   : ${{ inputs.board }}
-Branch  : ${{ inputs.branch }}
-Startup : ${{ inputs.startup }}
-
-Commit  : ${COMMIT}
-Date    : ${DATE}
-Size    : ${SIZE}
-EOF
+          {
+            echo "Bruce Firmware Builder"
+            echo "======================"
+            echo "Board   : ${{ inputs.board }}"
+            echo "Branch  : ${{ inputs.branch }}"
+            echo "Startup : ${{ inputs.startup }}"
+            echo ""
+            echo "Commit  : ${COMMIT}"
+            echo "Date    : ${DATE}"
+            echo "Size    : ${SIZE}"
+          } > package/build_info.txt
 
           # 2. Dynamic Flash Arguments
           FLASH_ARGS="0x1000 bootloader.bin 0x8000 partitions.bin"
@@ -166,31 +170,33 @@ EOF
           fi
           FLASH_ARGS="$FLASH_ARGS 0x10000 firmware.bin"
 
-          # 3. Flash Scripts (Bash & Batch)
-          cat <<EOF > package/flash.sh
-#!/bin/bash
-PORT=\${1:-/dev/ttyUSB0}
-esptool.py --chip esp32 --baud 921600 write_flash -z $FLASH_ARGS
-EOF
+          # 3. Flash Scripts (Bash & Batch dengan Perbaikan Port)
+          {
+            echo "#!/bin/bash"
+            echo "PORT=\${1:-/dev/ttyUSB0}"
+            echo "esptool.py -p \$PORT --chip esp32 --baud 921600 write_flash -z $FLASH_ARGS"
+          } > package/flash.sh
           chmod +x package/flash.sh
 
-          cat <<EOF > package/flash.bat
-@echo off
-esptool.exe --chip esp32 --baud 921600 write_flash -z $FLASH_ARGS
-pause
-EOF
+          {
+            echo "@echo off"
+            echo "set PORT=%1"
+            echo "if \"%PORT%\"==\"\" set PORT=COM3"
+            echo "esptool.exe -p %PORT% --chip esp32 --baud 921600 write_flash -z $FLASH_ARGS"
+            echo "pause"
+          } > package/flash.bat
 
-          cat <<EOF > package/flash_manual.txt
-Flash Addresses (Manual)
-========================
-bootloader.bin  -> 0x1000
-partitions.bin  -> 0x8000
-boot_app0.bin   -> 0xE000 (jika ada)
-firmware.bin    -> 0x10000
-
-Command:
-esptool.py --chip esp32 --baud 921600 write_flash -z $FLASH_ARGS
-EOF
+          {
+            echo "Flash Addresses (Manual)"
+            echo "========================"
+            echo "bootloader.bin  -> 0x1000"
+            echo "partitions.bin  -> 0x8000"
+            echo "boot_app0.bin   -> 0xE000 (jika ada)"
+            echo "firmware.bin    -> 0x10000"
+            echo ""
+            echo "Command Example:"
+            echo "esptool.py -p /dev/ttyUSB0 --chip esp32 --baud 921600 write_flash -z $FLASH_ARGS"
+          } > package/flash_manual.txt
 
           # 4. Generate Checksums
           (
@@ -223,7 +229,7 @@ EOF
           name: BuildFiles-${{ inputs.board }}
           path: bruce/.pio/build/${{ inputs.board }}
           if-no-files-found: warn
-          retention-days: 7 # Dikurangi menjadi 7 hari untuk menghemat storage Github
+          retention-days: 7
 
       - name: Build Summary
         shell: bash
