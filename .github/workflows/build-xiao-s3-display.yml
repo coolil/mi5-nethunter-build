@@ -64,23 +64,18 @@ jobs:
         run: |
           pio run -e headless-xiao-esp32s3-8mb
 
-      - name: 6. Merge Artifacts into 1 Single BIN (Offset 0x00)
+      - name: 6. Prepare Single BIN Output
         run: |
           mkdir -p output
-          BUILD_DIR=".pio/build/headless-xiao-esp32s3-8mb"
+          # Cari file merged BIN yang secara otomatis telah diproduksi oleh repositori Launcher
+          MERGED_FILE=$(find . -name "Launcher-headless-xiao-esp32s3-8mb.bin" | head -n 1)
           
-          # Lokasi boot_app0 bawaan pioarduino
-          BOOT_APP0=$(find ~/.platformio/packages/ -name "boot_app0.bin" | head -n 1)
-          
-          # Penggabungan komponen firmware menjadi 1 file tunggal (0x0000)
-          esptool.py --chip esp32s3 merge_bin \
-            -o output/Launcher-XIAO-S3-Display-2.4in-SINGLE.bin \
-            --flash_mode dio \
-            --flash_size 8MB \
-            0x0000 "$BUILD_DIR/bootloader.bin" \
-            0x8000 "$BUILD_DIR/partitions.bin" \
-            0xe000 "$BOOT_APP0" \
-            0x10000 "$BUILD_DIR/firmware.bin"
+          if [ -f "$MERGED_FILE" ]; then
+            cp "$MERGED_FILE" output/Launcher-XIAO-S3-Display-2.4in-SINGLE.bin
+          else
+            # Cadangan jika sistem repo tidak auto-merge: gunakan firmware.factory.bin bawaan PlatformIO
+            cp .pio/build/headless-xiao-esp32s3-8mb/firmware.factory.bin output/Launcher-XIAO-S3-Display-2.4in-SINGLE.bin
+          fi
 
       - name: 7. Upload Single Binary Artifact
         uses: actions/upload-artifact@v4
