@@ -27,13 +27,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install platformio esptool
 
-      - name: 4. Inject Display Setup into Official Headless Env
+      - name: 4. Clone & Modify CYD Environment for XIAO ESP32-S3
         run: |
-          # 1. Buat folder pins khusus untuk target xiao-esp32s3-headless
-          mkdir -p boards/xiao-esp32s3-headless
+          # 1. Buat folder board khusus berdasarkan template CYD
+          mkdir -p boards/xiao-esp32s3-display
           
-          # 2. Tulis definisi pin LCD 2.4 SPI ILI9341 & Touch XPT2046
-          cat << 'EOF' > boards/xiao-esp32s3-headless/pins.h
+          # 2. Tulis file pins.h khusus XIAO ESP32-S3 (Memakai driver ILI9341 & XPT2046 bawaan CYD)
+          cat << 'EOF' > boards/xiao-esp32s3-display/pins.h
           #ifndef PINS_H
           #define PINS_H
 
@@ -41,6 +41,7 @@ jobs:
           #define TFT_WIDTH  240
           #define TFT_HEIGHT 320
 
+          // Pinout Khusus XIAO ESP32-S3
           #define TFT_MOSI 9   // D10
           #define TFT_MISO 8   // D9
           #define TFT_SCLK 7   // D8
@@ -56,22 +57,39 @@ jobs:
           #endif
           EOF
 
-          # 3. Inject flag display langsung ke [env:xiao-esp32s3-headless] bawaan repo
-          sed -i '/\[env:xiao-esp32s3-headless\]/,/build_flags =/ s/build_flags =/build_flags =\n    -DUSER_SETUP_LOADED=1\n    -DILI9341_DRIVER=1\n    -DTFT_MOSI=9\n    -DTFT_MISO=8\n    -DTFT_SCLK=7\n    -DTFT_CS=1\n    -DTFT_DC=3\n    -DTFT_RST=2\n    -DTOUCH_CS=4\n    -DHAS_TOUCH=1/' platformio.ini
+          # 3. Duplikasi environment CYD-2432S028, ubah board ke seeed_xiao_esp32s3 dan arahkan ke pins.h kita
+          cat << 'EOF' >> platformio.ini
 
-      - name: 5. Build Official Environment (with Display Injected)
+          [env:xiao-esp32s3-display]
+          extends = env:CYD-2432S028
+          board = seeed_xiao_esp32s3
+          board_build.variant = seeed_xiao_esp32s3
+          board_build.configurations = boards/xiao-esp32s3-display/pins.h
+          build_flags =
+              ${env:CYD-2432S028.build_flags}
+              -include boards/xiao-esp32s3-display/pins.h
+              -DTFT_MOSI=9
+              -DTFT_MISO=8
+              -DTFT_SCLK=7
+              -DTFT_CS=1
+              -DTFT_DC=3
+              -DTFT_RST=2
+              -DTOUCH_CS=4
+          EOF
+
+      - name: 5. Build Project with PlatformIO
         run: |
-          pio run -e xiao-esp32s3-headless
+          pio run -e xiao-esp32s3-display
 
       - name: 6. Merge All Artifacts into 1 Single BIN (Offset 0x00)
         run: |
           mkdir -p output
-          BUILD_DIR=".pio/build/xiao-esp32s3-headless"
+          BUILD_DIR=".pio/build/xiao-esp32s3-display"
           
-          # Cari boot_app0.bin bawaan espressif32/pioarduino
+          # Ambil boot_app0 bawaan platformio
           BOOT_APP0=$(find ~/.platformio/packages/ -name "boot_app0.bin" | head -n 1)
           
-          # Merge firmware menjadi 1 file tunggal 0x0000
+          # Merge seluruh file binary menjadi 1 file tunggal 0x0000
           esptool.py --chip esp32s3 merge_bin \
             -o output/Launcher-XIAO-S3-Display-2.4in-SINGLE.bin \
             --flash_mode dio \
