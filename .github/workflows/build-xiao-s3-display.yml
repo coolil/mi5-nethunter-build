@@ -27,12 +27,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install platformio esptool
 
-      - name: 4. Inject Custom Board Profile (Structure Compliant)
+      - name: 4. Inject Custom Display Pins & Override Environment
         run: |
-          # 1. Buat folder board sesuai standar struktur bmorcelli/Launcher
+          # 1. Buat folder board sesuai standar Launcher
           mkdir -p boards/xiao-esp32s3-display
           
-          # 2. Tulis file pins.h yang kompatibel dengan sistem Launcher
+          # 2. Tulis file pins.h (Menghilangkan makro duplikat BOARD_HAS_PSRAM)
           cat << 'EOF' > boards/xiao-esp32s3-display/pins.h
           #ifndef PINS_H
           #define PINS_H
@@ -52,30 +52,30 @@ jobs:
           #define TOUCH_CS 4   // D3
           #define SPI_TOUCH_FREQUENCY 2500000
           #define HAS_TOUCH
-          #define BOARD_HAS_PSRAM
 
           #endif
           EOF
 
-          # 3. Inject Environment mandiri (Lengkap dengan variant fix untuk ESP32-S3 Sense)
+          # 3. Inject Environment dengan MENGEMBANGKAN (extends) env:xiao-esp32s3-headless
+          # Ini menjamin pins_arduino.h dan framework espressif32 terbaca sempurna
           cat << 'EOF' >> platformio.ini
 
           [env:xiao-esp32s3-display]
-          platform = espressif32
-          framework = arduino
-          board = seeed_xiao_esp32s3
-          board_build.variant = seeed_xiao_esp32s3
-          board_build.mcu = esp32s3
-          board_build.f_cpu = 240000000L
-          board_build.f_flash = 80000000L
-          board_build.flash_mode = dio
-          board_build.arduino.memory_type = qio_opi
+          extends = env:xiao-esp32s3-headless
           board_build.configurations = boards/xiao-esp32s3-display/pins.h
           build_flags =
-              -DCORE_DEBUG_LEVEL=0
-              -DBOARD_HAS_PSRAM
-              -DCONFIG_SPIRAM_MODE_OCT
+              ${env:xiao-esp32s3-headless.build_flags}
               -include boards/xiao-esp32s3-display/pins.h
+              -DUSER_SETUP_LOADED=1
+              -DILI9341_DRIVER=1
+              -DTFT_MOSI=9
+              -DTFT_MISO=8
+              -DTFT_SCLK=7
+              -DTFT_CS=1
+              -DTFT_DC=3
+              -DTFT_RST=2
+              -DTOUCH_CS=4
+              -DHAS_TOUCH=1
           EOF
 
       - name: 5. Build Project with PlatformIO
@@ -87,10 +87,10 @@ jobs:
           mkdir -p output
           BUILD_DIR=".pio/build/xiao-esp32s3-display"
           
-          # Cari lokasi boot_app0.bin bawaan framework
+          # Ambil boot_app0 bawaan platformio
           BOOT_APP0=$(find ~/.platformio/packages/ -name "boot_app0.bin" | head -n 1)
           
-          # Menggabungkan komponen firmware menjadi 1 file tunggal
+          # Merge seluruh file binary menjadi 1 file tunggal
           esptool.py --chip esp32s3 merge_bin \
             -o output/Launcher-XIAO-S3-Display-2.4in-SINGLE.bin \
             --flash_mode dio \
