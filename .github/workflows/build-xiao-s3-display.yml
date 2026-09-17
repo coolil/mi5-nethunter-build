@@ -27,12 +27,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install platformio esptool
 
-      - name: 4. Inject Custom Display Pins & Override Environment
+      - name: 4. Inject Custom Display Pins & Override Headless Env
         run: |
-          # 1. Buat folder board sesuai standar Launcher
+          # 1. Buat folder board khusus
           mkdir -p boards/xiao-esp32s3-display
           
-          # 2. Tulis file pins.h (Menghilangkan makro duplikat BOARD_HAS_PSRAM)
+          # 2. Buat file pins.h khusus LCD ILI9341 2.4 SPI & Touch XPT2046
           cat << 'EOF' > boards/xiao-esp32s3-display/pins.h
           #ifndef PINS_H
           #define PINS_H
@@ -56,8 +56,8 @@ jobs:
           #endif
           EOF
 
-          # 3. Inject Environment dengan MENGEMBANGKAN (extends) env:xiao-esp32s3-headless
-          # Ini menjamin pins_arduino.h dan framework espressif32 terbaca sempurna
+          # 3. Timpa/Tambahkan build_flags ke env:xiao-esp32s3-headless bawaan repo
+          # Ini mencegah bug PlatformIO builder karena menggunakan platform yang sudah valid
           cat << 'EOF' >> platformio.ini
 
           [env:xiao-esp32s3-display]
@@ -78,8 +78,10 @@ jobs:
               -DHAS_TOUCH=1
           EOF
 
-      - name: 5. Build Project with PlatformIO
+      - name: 5. Pre-install Espressif Platform & Build
         run: |
+          # Install platform espressif32 secara eksplisit untuk mencegah error python env
+          pio pkg install --platform "platformio/espressif32"
           pio run -e xiao-esp32s3-display
 
       - name: 6. Merge All Artifacts into 1 Single BIN (Offset 0x00)
@@ -87,10 +89,10 @@ jobs:
           mkdir -p output
           BUILD_DIR=".pio/build/xiao-esp32s3-display"
           
-          # Ambil boot_app0 bawaan platformio
+          # Cari boot_app0.bin bawaan espressif32
           BOOT_APP0=$(find ~/.platformio/packages/ -name "boot_app0.bin" | head -n 1)
           
-          # Merge seluruh file binary menjadi 1 file tunggal
+          # Merge firmware menjadi 1 file tunggal 0x0000
           esptool.py --chip esp32s3 merge_bin \
             -o output/Launcher-XIAO-S3-Display-2.4in-SINGLE.bin \
             --flash_mode dio \
