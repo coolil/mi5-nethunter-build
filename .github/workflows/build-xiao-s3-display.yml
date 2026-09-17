@@ -27,13 +27,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install platformio esptool
 
-      - name: 4. Inject Custom Display Pins & Override Headless Env
+      - name: 4. Inject Display Setup into Official Headless Env
         run: |
-          # 1. Buat folder board khusus
-          mkdir -p boards/xiao-esp32s3-display
+          # 1. Buat folder pins khusus untuk target xiao-esp32s3-headless
+          mkdir -p boards/xiao-esp32s3-headless
           
-          # 2. Buat file pins.h khusus LCD ILI9341 2.4 SPI & Touch XPT2046
-          cat << 'EOF' > boards/xiao-esp32s3-display/pins.h
+          # 2. Tulis definisi pin LCD 2.4 SPI ILI9341 & Touch XPT2046
+          cat << 'EOF' > boards/xiao-esp32s3-headless/pins.h
           #ifndef PINS_H
           #define PINS_H
 
@@ -56,40 +56,19 @@ jobs:
           #endif
           EOF
 
-          # 3. Timpa/Tambahkan build_flags ke env:xiao-esp32s3-headless bawaan repo
-          # Ini mencegah bug PlatformIO builder karena menggunakan platform yang sudah valid
-          cat << 'EOF' >> platformio.ini
+          # 3. Inject flag display langsung ke [env:xiao-esp32s3-headless] bawaan repo
+          sed -i '/\[env:xiao-esp32s3-headless\]/,/build_flags =/ s/build_flags =/build_flags =\n    -DUSER_SETUP_LOADED=1\n    -DILI9341_DRIVER=1\n    -DTFT_MOSI=9\n    -DTFT_MISO=8\n    -DTFT_SCLK=7\n    -DTFT_CS=1\n    -DTFT_DC=3\n    -DTFT_RST=2\n    -DTOUCH_CS=4\n    -DHAS_TOUCH=1/' platformio.ini
 
-          [env:xiao-esp32s3-display]
-          extends = env:xiao-esp32s3-headless
-          board_build.configurations = boards/xiao-esp32s3-display/pins.h
-          build_flags =
-              ${env:xiao-esp32s3-headless.build_flags}
-              -include boards/xiao-esp32s3-display/pins.h
-              -DUSER_SETUP_LOADED=1
-              -DILI9341_DRIVER=1
-              -DTFT_MOSI=9
-              -DTFT_MISO=8
-              -DTFT_SCLK=7
-              -DTFT_CS=1
-              -DTFT_DC=3
-              -DTFT_RST=2
-              -DTOUCH_CS=4
-              -DHAS_TOUCH=1
-          EOF
-
-      - name: 5. Pre-install Espressif Platform & Build
+      - name: 5. Build Official Environment (with Display Injected)
         run: |
-          # Install platform espressif32 secara eksplisit untuk mencegah error python env
-          pio pkg install --platform "platformio/espressif32"
-          pio run -e xiao-esp32s3-display
+          pio run -e xiao-esp32s3-headless
 
       - name: 6. Merge All Artifacts into 1 Single BIN (Offset 0x00)
         run: |
           mkdir -p output
-          BUILD_DIR=".pio/build/xiao-esp32s3-display"
+          BUILD_DIR=".pio/build/xiao-esp32s3-headless"
           
-          # Cari boot_app0.bin bawaan espressif32
+          # Cari boot_app0.bin bawaan espressif32/pioarduino
           BOOT_APP0=$(find ~/.platformio/packages/ -name "boot_app0.bin" | head -n 1)
           
           # Merge firmware menjadi 1 file tunggal 0x0000
