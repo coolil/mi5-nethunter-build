@@ -27,13 +27,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install platformio esptool
 
-      - name: 4. Inject ILI9341 & XPT2046 Display Pins into Official Headless Target
+      - name: 4. Inject Display Setup into Official Environment
         run: |
-          # 1. Pastikan folder target xiao-esp32s3-headless tersedia
-          mkdir -p boards/xiao-esp32s3-headless
+          # 1. Pastikan folder target headless-xiao-esp32s3-8mb tersedia
+          mkdir -p boards/headless-xiao-esp32s3-8mb
           
-          # 2. Tulis file pins.h untuk Display 2.4" SPI & Touchscreen XPT2046
-          cat << 'EOF' > boards/xiao-esp32s3-headless/pins.h
+          # 2. Tulis file pins.h untuk Display 2.4" SPI (ILI9341) & Touch (XPT2046)
+          cat << 'EOF' > boards/headless-xiao-esp32s3-8mb/pins.h
           #ifndef PINS_H
           #define PINS_H
 
@@ -57,22 +57,22 @@ jobs:
           #endif
           EOF
 
-          # 3. Suntikkan flag display ke environment xiao-esp32s3-headless di platformio.ini
-          sed -i '/\[env:xiao-esp32s3-headless\]/,/build_flags =/ s/build_flags =/build_flags =\n    -DUSER_SETUP_LOADED=1\n    -DILI9341_DRIVER=1\n    -DTFT_MOSI=9\n    -DTFT_MISO=8\n    -DTFT_SCLK=7\n    -DTFT_CS=1\n    -DTFT_DC=3\n    -DTFT_RST=2\n    -DTOUCH_CS=4\n    -DHAS_TOUCH=1/' platformio.ini
+          # 3. Inject flag display langsung ke [env:headless-xiao-esp32s3-8mb] di platformio.ini
+          sed -i '/\[env:headless-xiao-esp32s3-8mb\]/,/build_flags =/ s/build_flags =/build_flags =\n    -DUSER_SETUP_LOADED=1\n    -DILI9341_DRIVER=1\n    -DTFT_MOSI=9\n    -DTFT_MISO=8\n    -DTFT_SCLK=7\n    -DTFT_CS=1\n    -DTFT_DC=3\n    -DTFT_RST=2\n    -DTOUCH_CS=4\n    -DHAS_TOUCH=1/' platformio.ini
 
-      - name: 5. Build ESP32-S3 Display Target
+      - name: 5. Build Official Environment
         run: |
-          pio run -e xiao-esp32s3-headless
+          pio run -e headless-xiao-esp32s3-8mb
 
-      - name: 6. Merge Artifacts into Single Flashable BIN (Offset 0x00)
+      - name: 6. Merge Artifacts into 1 Single BIN (Offset 0x00)
         run: |
           mkdir -p output
-          BUILD_DIR=".pio/build/xiao-esp32s3-headless"
+          BUILD_DIR=".pio/build/headless-xiao-esp32s3-8mb"
           
           # Lokasi boot_app0 bawaan pioarduino
           BOOT_APP0=$(find ~/.platformio/packages/ -name "boot_app0.bin" | head -n 1)
           
-          # Penggabungan seluruh file komponen menjadi 1 biner tunggal (0x0000)
+          # Penggabungan komponen firmware menjadi 1 file tunggal (0x0000)
           esptool.py --chip esp32s3 merge_bin \
             -o output/Launcher-XIAO-S3-Display-2.4in-SINGLE.bin \
             --flash_mode dio \
