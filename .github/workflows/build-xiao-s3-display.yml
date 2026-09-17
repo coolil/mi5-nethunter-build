@@ -27,12 +27,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install platformio esptool
 
-      - name: 4. Clone & Modify CYD Environment for XIAO ESP32-S3
+      - name: 4. Inject XIAO ESP32-S3 Display Config
         run: |
-          # 1. Buat folder board khusus berdasarkan template CYD
+          # 1. Buat folder board khusus
           mkdir -p boards/xiao-esp32s3-display
           
-          # 2. Tulis file pins.h khusus XIAO ESP32-S3 (Memakai driver ILI9341 & XPT2046 bawaan CYD)
+          # 2. Tulis file pins.h khusus LCD ILI9341 & Touch XPT2046
           cat << 'EOF' > boards/xiao-esp32s3-display/pins.h
           #ifndef PINS_H
           #define PINS_H
@@ -41,7 +41,7 @@ jobs:
           #define TFT_WIDTH  240
           #define TFT_HEIGHT 320
 
-          // Pinout Khusus XIAO ESP32-S3
+          // Pinout Khusus XIAO ESP32-S3 Sense
           #define TFT_MOSI 9   // D10
           #define TFT_MISO 8   // D9
           #define TFT_SCLK 7   // D8
@@ -57,17 +57,19 @@ jobs:
           #endif
           EOF
 
-          # 3. Duplikasi environment CYD-2432S028, ubah board ke seeed_xiao_esp32s3 dan arahkan ke pins.h kita
+          # 3. Turunkan (extends) langsung dari esp32s3_base bawaan repo agar pins_arduino.h valid
           cat << 'EOF' >> platformio.ini
 
           [env:xiao-esp32s3-display]
-          extends = env:CYD-2432S028
-          board = seeed_xiao_esp32s3
-          board_build.variant = seeed_xiao_esp32s3
+          extends = env:esp32s3_base
+          board = esp32-s3-devkitc-1
+          board_build.arduino.memory_type = qio_opi
           board_build.configurations = boards/xiao-esp32s3-display/pins.h
           build_flags =
-              ${env:CYD-2432S028.build_flags}
+              ${env:esp32s3_base.build_flags}
               -include boards/xiao-esp32s3-display/pins.h
+              -DBOARD_HAS_PSRAM
+              -DCONFIG_SPIRAM_MODE_OCT
               -DTFT_MOSI=9
               -DTFT_MISO=8
               -DTFT_SCLK=7
@@ -86,10 +88,10 @@ jobs:
           mkdir -p output
           BUILD_DIR=".pio/build/xiao-esp32s3-display"
           
-          # Ambil boot_app0 bawaan platformio
+          # Ambil file boot_app0 bawaan framework
           BOOT_APP0=$(find ~/.platformio/packages/ -name "boot_app0.bin" | head -n 1)
           
-          # Merge seluruh file binary menjadi 1 file tunggal 0x0000
+          # Merge firmware menjadi 1 file tunggal 0x0000
           esptool.py --chip esp32s3 merge_bin \
             -o output/Launcher-XIAO-S3-Display-2.4in-SINGLE.bin \
             --flash_mode dio \
