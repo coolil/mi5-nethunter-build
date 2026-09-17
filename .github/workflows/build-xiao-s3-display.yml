@@ -27,21 +27,21 @@ jobs:
           python -m pip install --upgrade pip
           pip install platformio esptool
 
-      - name: 4. Inject Display Setup into Official Environment
+      - name: 4. Inject Display Setup & Force GFX Drivers
         run: |
-          # 1. Pastikan folder target headless-xiao-esp32s3-8mb tersedia
           mkdir -p boards/headless-xiao-esp32s3-8mb
           
-          # 2. Tulis file pins.h untuk Display 2.4" SPI (ILI9341) & Touch (XPT2046)
+          # Tulis pins.h dengan macro komplit bawaan Launcher
           cat << 'EOF' > boards/headless-xiao-esp32s3-8mb/pins.h
           #ifndef PINS_H
           #define PINS_H
 
+          // Driver LCD ILI9341
           #define ILI9341_DRIVER
           #define TFT_WIDTH  240
           #define TFT_HEIGHT 320
 
-          // Pinout SPI XIAO ESP32-S3
+          // Pinout SPI XIAO ESP32-S3 Sense
           #define TFT_MOSI 9   // D10
           #define TFT_MISO 8   // D9
           #define TFT_SCLK 7   // D8
@@ -53,27 +53,45 @@ jobs:
           #define TOUCH_CS 4   // D3
           #define SPI_TOUCH_FREQUENCY 2500000
           #define HAS_TOUCH
+          #define BOARD_HAS_PSRAM
 
           #endif
           EOF
 
-          # 3. Inject flag display langsung ke [env:headless-xiao-esp32s3-8mb] di platformio.ini
-          sed -i '/\[env:headless-xiao-esp32s3-8mb\]/,/build_flags =/ s/build_flags =/build_flags =\n    -DUSER_SETUP_LOADED=1\n    -DILI9341_DRIVER=1\n    -DTFT_MOSI=9\n    -DTFT_MISO=8\n    -DTFT_SCLK=7\n    -DTFT_CS=1\n    -DTFT_DC=3\n    -DTFT_RST=2\n    -DTOUCH_CS=4\n    -DHAS_TOUCH=1/' platformio.ini
+          # Inject macro pengaktif layar langsung ke platformio.ini
+          cat << 'EOF' >> platformio.ini
 
-      - name: 5. Build Official Environment
+          # Override display setup
+          [env:headless-xiao-esp32s3-8mb]
+          build_flags =
+              ${env:headless-esp32s3-8mb.build_flags}
+              -include boards/headless-xiao-esp32s3-8mb/pins.h
+              -DUSER_SETUP_LOADED=1
+              -DILI9341_DRIVER=1
+              -DTFT_WIDTH=240
+              -DTFT_HEIGHT=320
+              -DTFT_MOSI=9
+              -DTFT_MISO=8
+              -DTFT_SCLK=7
+              -DTFT_CS=1
+              -DTFT_DC=3
+              -DTFT_RST=2
+              -DTOUCH_CS=4
+              -DHAS_TOUCH=1
+          EOF
+
+      - name: 5. Build Firmware
         run: |
           pio run -e headless-xiao-esp32s3-8mb
 
       - name: 6. Prepare Single BIN Output
         run: |
           mkdir -p output
-          # Cari file merged BIN yang secara otomatis telah diproduksi oleh repositori Launcher
           MERGED_FILE=$(find . -name "Launcher-headless-xiao-esp32s3-8mb.bin" | head -n 1)
           
           if [ -f "$MERGED_FILE" ]; then
             cp "$MERGED_FILE" output/Launcher-XIAO-S3-Display-2.4in-SINGLE.bin
           else
-            # Cadangan jika sistem repo tidak auto-merge: gunakan firmware.factory.bin bawaan PlatformIO
             cp .pio/build/headless-xiao-esp32s3-8mb/firmware.factory.bin output/Launcher-XIAO-S3-Display-2.4in-SINGLE.bin
           fi
 
