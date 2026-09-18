@@ -38,7 +38,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: pip
 
       # ==========================================================
       # 3. PlatformIO
@@ -247,7 +246,7 @@ jobs:
           OUT="output"
           mkdir -p "$OUT"
           
-          # Cari file biner hasil merge otomatis repositori
+          # Cari file biner hasil kompilasi
           CANDIDATE=$(find . -name "*xiao-esp32s3-ili9341*.bin" -o -name "merged.bin" -o -name "firmware.factory.bin" | head -n 1)
 
           if [ -z "$CANDIDATE" ] || [ ! -f "$CANDIDATE" ]; then
