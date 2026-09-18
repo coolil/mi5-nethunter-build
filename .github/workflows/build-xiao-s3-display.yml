@@ -78,13 +78,27 @@ jobs:
           python - <<'PY'
           import json
           import sys
+
           with open("/tmp/pio.json") as f:
               data = json.load(f)
-          envs = data.get("envs", [])
+
+          envs = []
+          if isinstance(data, dict):
+              envs = list(data.keys())
+          elif isinstance(data, list):
+              for item in data:
+                  if isinstance(item, list) and len(item) > 0:
+                      if item[0] == "env":
+                          envs.append(item[1])
+                      elif str(item[0]).startswith("env:"):
+                          envs.append(str(item[0]).replace("env:", ""))
+
           wanted = "headless-xiao-esp32s3-8mb"
           if wanted not in envs:
               print(f"ERROR: Missing base environment {wanted}")
+              print("Found environments:", envs)
               sys.exit(1)
+
           print("Base environment OK:", wanted)
           PY
 
@@ -217,13 +231,28 @@ jobs:
           python - <<'PY'
           import json
           import sys
+
           with open("/tmp/pio-final.json") as f:
               data = json.load(f)
-          envs = data.get("envs", [])
-          if "xiao-esp32s3-ili9341" not in envs:
-              print("ERROR: custom XIAO environment missing")
+
+          envs = []
+          if isinstance(data, dict):
+              envs = list(data.keys())
+          elif isinstance(data, list):
+              for item in data:
+                  if isinstance(item, list) and len(item) > 0:
+                      if item[0] == "env":
+                          envs.append(item[1])
+                      elif str(item[0]).startswith("env:"):
+                          envs.append(str(item[0]).replace("env:", ""))
+
+          wanted = "xiao-esp32s3-ili9341"
+          if wanted not in envs:
+              print(f"ERROR: custom XIAO environment missing: {wanted}")
+              print("Found environments:", envs)
               sys.exit(1)
-          print("Environment OK.")
+
+          print("Environment OK:", wanted)
           PY
 
       # ==========================================================
@@ -246,7 +275,6 @@ jobs:
           OUT="output"
           mkdir -p "$OUT"
           
-          # Cari file biner hasil kompilasi
           CANDIDATE=$(find . -name "*xiao-esp32s3-ili9341*.bin" -o -name "merged.bin" -o -name "firmware.factory.bin" | head -n 1)
 
           if [ -z "$CANDIDATE" ] || [ ! -f "$CANDIDATE" ]; then
