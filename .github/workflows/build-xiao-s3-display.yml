@@ -1,73 +1,156 @@
-name: Build Single Flashable BIN - XIAO ESP32-S3 Display 2.4
+name: Build Launcher - XIAO ESP32-S3 Sense 8MB + ILI9341 2.4 Touch
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches:
+      - main
+      - master
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: launcher-xiao-s3-sense-8mb
+  cancel-in-progress: true
 
 jobs:
   build:
+    name: XIAO ESP32-S3 Sense 8MB + ILI9341
     runs-on: ubuntu-latest
 
     steps:
-      - name: 1. Checkout Original Repository
+      # ==========================================================
+      # 1. Checkout Launcher
+      # ==========================================================
+      - name: Checkout Launcher
         uses: actions/checkout@v4
         with:
-          repository: 'bmorcelli/Launcher'
+          repository: bmorcelli/Launcher
+          ref: main
           submodules: recursive
           fetch-depth: 0
 
-      - name: 2. Set up Python
+      # ==========================================================
+      # 2. Python
+      # ==========================================================
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: "3.11"
+          cache: pip
 
-      - name: 3. Install PlatformIO & Esptool
+      # ==========================================================
+      # 3. PlatformIO
+      # ==========================================================
+      - name: Install PlatformIO
         run: |
           python -m pip install --upgrade pip
-          pip install platformio esptool
+          python -m pip install platformio esptool
+          pio --version
+          esptool version
 
-      - name: 4. Inject Display Setup & Force GFX Drivers
+      # ==========================================================
+      # 4. Check official Launcher structure
+      # ==========================================================
+      - name: Check Launcher configuration
+        shell: bash
         run: |
-          mkdir -p boards/headless-xiao-esp32s3-8mb
-          
-          # Tulis pins.h dengan macro komplit bawaan Launcher
-          cat << 'EOF' > boards/headless-xiao-esp32s3-8mb/pins.h
-          #ifndef PINS_H
-          #define PINS_H
+          set -euo pipefail
+          echo "=============================================="
+          echo "Launcher commit"
+          echo "=============================================="
+          git rev-parse HEAD
+          git log -1 --oneline
+          echo
+          echo "=============================================="
+          echo "Existing XIAO ESP32-S3 targets"
+          echo "=============================================="
+          grep -n "headless-xiao-esp32s3" platformio.ini || true
 
-          // Driver LCD ILI9341
-          #define ILI9341_DRIVER
+      # ==========================================================
+      # 5. Verify official 8MB XIAO environment
+      # ==========================================================
+      - name: Verify XIAO ESP32-S3 8MB environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          pio project config --json-output > /tmp/pio.json
+          python - <<'PY'
+          import json
+          import sys
+          with open("/tmp/pio.json") as f:
+              data = json.load(f)
+          envs = data.get("envs", [])
+          wanted = "headless-xiao-esp32s3-8mb"
+          if wanted not in envs:
+              print(f"ERROR: Missing base environment {wanted}")
+              sys.exit(1)
+          print("Base environment OK:", wanted)
+          PY
+
+      # ==========================================================
+      # 6. Create board directory
+      # ==========================================================
+      - name: Create XIAO ILI9341 board
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p boards/xiao-esp32s3-ili9341
+
+      # ==========================================================
+      # 7. XIAO ESP32-S3 + ILI9341 pin definitions
+      # ==========================================================
+      - name: Create XIAO pin configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          BOARD="boards/xiao-esp32s3-ili9341"
+          cat > "$BOARD/pins.h" <<'EOF'
+          #ifndef XIAO_ESP32S3_ILI9341_PINS_H
+          #define XIAO_ESP32S3_ILI9341_PINS_H
+
+          #define TFT_MOSI 9
+          #define TFT_MISO 8
+          #define TFT_SCLK 7
+          #define TFT_CS   1
+          #define TFT_DC   3
+          #define TFT_RST  2
           #define TFT_WIDTH  240
           #define TFT_HEIGHT 320
 
-          // Pinout SPI XIAO ESP32-S3 Sense
-          #define TFT_MOSI 9   // D10
-          #define TFT_MISO 8   // D9
-          #define TFT_SCLK 7   // D8
-          #define TFT_CS   1   // D0
-          #define TFT_DC   3   // D2
-          #define TFT_RST  2   // D1
-          #define TFT_BL  -1   // Direct 3V3
+          #define TFT_BL  -1
+          #define TOUCH_CS 4
 
-          #define TOUCH_CS 4   // D3
-          #define SPI_TOUCH_FREQUENCY 2500000
-          #define HAS_TOUCH
-          #define BOARD_HAS_PSRAM
+          #define USE_TFT_ESPI
+          #define ILI9341_DRIVER
+
+          #define SPI_FREQUENCY       40000000
+          #define SPI_READ_FREQUENCY  20000000
+          #define SPI_TOUCH_FREQUENCY  2500000
 
           #endif
           EOF
 
-          # Inject macro pengaktif layar langsung ke platformio.ini
+      # ==========================================================
+      # 8. Board PlatformIO environment (Append to root platformio.ini)
+      # ==========================================================
+      - name: Inject PlatformIO environment
+        shell: bash
+        run: |
+          set -euo pipefail
           cat << 'EOF' >> platformio.ini
 
-          # Override display setup
-          [env:headless-xiao-esp32s3-8mb]
+          [env:xiao-esp32s3-ili9341]
+          extends = env:headless-xiao-esp32s3-8mb
+          build_src_filter = ${env:headless-xiao-esp32s3-8mb.build_src_filter} +<../boards/xiao-esp32s3-ili9341>
           build_flags =
-              ${env:headless-esp32s3-8mb.build_flags}
-              -include boards/headless-xiao-esp32s3-8mb/pins.h
-              -DUSER_SETUP_LOADED=1
-              -DILI9341_DRIVER=1
+              ${env:headless-xiao-esp32s3-8mb.build_flags}
+              -I boards/xiao-esp32s3-ili9341
+              -include boards/xiao-esp32s3-ili9341/pins.h
+              -DDEVICE_NAME=\"XIAO-ESP32S3-SENSE-ILI9341\"
+              -DUSE_TFT_ESPI
+              -DILI9341_DRIVER
               -DTFT_WIDTH=240
               -DTFT_HEIGHT=320
               -DTFT_MOSI=9
@@ -76,28 +159,121 @@ jobs:
               -DTFT_CS=1
               -DTFT_DC=3
               -DTFT_RST=2
+              -DTFT_BL=-1
               -DTOUCH_CS=4
-              -DHAS_TOUCH=1
+              -DSPI_FREQUENCY=40000000
+              -DSPI_READ_FREQUENCY=20000000
+              -DSPI_TOUCH_FREQUENCY=2500000
+              -DBOARD_HAS_PSRAM
           EOF
 
-      - name: 5. Build Firmware
+      # ==========================================================
+      # 9. Board interface
+      # ==========================================================
+      - name: Create XIAO board interface
+        shell: bash
         run: |
-          pio run -e headless-xiao-esp32s3-8mb
+          set -euo pipefail
+          cat > boards/xiao-esp32s3-ili9341/interface.cpp <<'EOF'
+          #include <Arduino.h>
+          #include <interface.h>
 
-      - name: 6. Prepare Single BIN Output
+          void _setup_gpio() {
+          #if defined(TOUCH_CS)
+              pinMode(TOUCH_CS, OUTPUT);
+              digitalWrite(TOUCH_CS, HIGH);
+          #endif
+          }
+
+          void _post_setup_gpio() {
+          #if defined(TFT_BL) && TFT_BL >= 0
+              pinMode(TFT_BL, OUTPUT);
+              digitalWrite(TFT_BL, HIGH);
+          #endif
+          }
+
+          void _setBrightness(uint8_t brightval) {
+              (void)brightval;
+          }
+
+          void InputHandler(void) {
+          }
+
+          void checkReboot() {
+          }
+
+          void powerOff() {
+              esp_deep_sleep_start();
+          }
+          EOF
+
+      # ==========================================================
+      # 10. Validate environment
+      # ==========================================================
+      - name: Validate PlatformIO
+        shell: bash
         run: |
-          mkdir -p output
-          MERGED_FILE=$(find . -name "Launcher-headless-xiao-esp32s3-8mb.bin" | head -n 1)
+          set -euo pipefail
+          pio project config --json-output > /tmp/pio-final.json
+          python - <<'PY'
+          import json
+          import sys
+          with open("/tmp/pio-final.json") as f:
+              data = json.load(f)
+          envs = data.get("envs", [])
+          if "xiao-esp32s3-ili9341" not in envs:
+              print("ERROR: custom XIAO environment missing")
+              sys.exit(1)
+          print("Environment OK.")
+          PY
+
+      # ==========================================================
+      # 11. Build
+      # ==========================================================
+      - name: Build XIAO Launcher
+        shell: bash
+        run: |
+          set -euo pipefail
+          pio run -e xiao-esp32s3-ili9341
+
+      # ==========================================================
+      # 12. Select & Prepare Single BIN Output
+      # ==========================================================
+      - name: Prepare single BIN
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD=".pio/build/xiao-esp32s3-ili9341"
+          OUT="output"
+          mkdir -p "$OUT"
           
-          if [ -f "$MERGED_FILE" ]; then
-            cp "$MERGED_FILE" output/Launcher-XIAO-S3-Display-2.4in-SINGLE.bin
-          else
-            cp .pio/build/headless-xiao-esp32s3-8mb/firmware.factory.bin output/Launcher-XIAO-S3-Display-2.4in-SINGLE.bin
+          # Cari file biner hasil merge otomatis repositori
+          CANDIDATE=$(find . -name "*xiao-esp32s3-ili9341*.bin" -o -name "merged.bin" -o -name "firmware.factory.bin" | head -n 1)
+
+          if [ -z "$CANDIDATE" ] || [ ! -f "$CANDIDATE" ]; then
+              echo "ERROR: No flashable BIN found."
+              exit 1
           fi
 
-      - name: 7. Upload Single Binary Artifact
+          echo "Selected binary: $CANDIDATE"
+          cp "$CANDIDATE" "$OUT/Launcher-XIAO-ESP32S3-Sense-ILI9341-2.4-8MB-MERGED.bin"
+
+      # ==========================================================
+      # 13. SHA256 & Artifact Upload
+      # ==========================================================
+      - name: Generate SHA256 & Upload
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd output
+          sha256sum Launcher-XIAO-ESP32S3-Sense-ILI9341-2.4-8MB-MERGED.bin | tee SHA256SUMS.txt
+
+      - name: Upload firmware
         uses: actions/upload-artifact@v4
         with:
-          name: Launcher-XIAO-S3-Display-2.4in-SINGLE
-          path: output/Launcher-XIAO-S3-Display-2.4in-SINGLE.bin
-          retention-days: 14
+          name: Launcher-XIAO-ESP32S3-Sense-ILI9341-2.4-8MB
+          path: |
+            output/Launcher-XIAO-ESP32S3-Sense-ILI9341-2.4-8MB-MERGED.bin
+            output/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
