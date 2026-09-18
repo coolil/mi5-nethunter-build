@@ -156,7 +156,6 @@ jobs:
 
           [env:xiao-esp32s3-ili9341]
           extends = env:headless-xiao-esp32s3-8mb
-          build_src_filter = ${env:headless-xiao-esp32s3-8mb.build_src_filter} +<../boards/xiao-esp32s3-ili9341>
           build_flags =
               ${env:headless-xiao-esp32s3-8mb.build_flags}
               -I boards/xiao-esp32s3-ili9341
@@ -181,47 +180,7 @@ jobs:
           EOF
 
       # ==========================================================
-      # 9. Board interface
-      # ==========================================================
-      - name: Create XIAO board interface
-        shell: bash
-        run: |
-          set -euo pipefail
-          cat > boards/xiao-esp32s3-ili9341/interface.cpp <<'EOF'
-          #include <Arduino.h>
-          #include <interface.h>
-
-          void _setup_gpio() {
-          #if defined(TOUCH_CS)
-              pinMode(TOUCH_CS, OUTPUT);
-              digitalWrite(TOUCH_CS, HIGH);
-          #endif
-          }
-
-          void _post_setup_gpio() {
-          #if defined(TFT_BL) && TFT_BL >= 0
-              pinMode(TFT_BL, OUTPUT);
-              digitalWrite(TFT_BL, HIGH);
-          #endif
-          }
-
-          void _setBrightness(uint8_t brightval) {
-              (void)brightval;
-          }
-
-          void InputHandler(void) {
-          }
-
-          void checkReboot() {
-          }
-
-          void powerOff() {
-              esp_deep_sleep_start();
-          }
-          EOF
-
-      # ==========================================================
-      # 10. Validate environment
+      # 9. Validate environment
       # ==========================================================
       - name: Validate PlatformIO
         shell: bash
@@ -256,7 +215,7 @@ jobs:
           PY
 
       # ==========================================================
-      # 11. Build
+      # 10. Build
       # ==========================================================
       - name: Build XIAO Launcher
         shell: bash
@@ -265,7 +224,7 @@ jobs:
           pio run -e xiao-esp32s3-ili9341
 
       # ==========================================================
-      # 12. Select & Prepare Single BIN Output
+      # 11. Select & Prepare Single BIN Output
       # ==========================================================
       - name: Prepare single BIN
         shell: bash
@@ -286,7 +245,7 @@ jobs:
           cp "$CANDIDATE" "$OUT/Launcher-XIAO-ESP32S3-Sense-ILI9341-2.4-8MB-MERGED.bin"
 
       # ==========================================================
-      # 13. SHA256 & Artifact Upload
+      # 12. SHA256 & Artifact Upload
       # ==========================================================
       - name: Generate SHA256 & Upload
         shell: bash
