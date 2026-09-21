@@ -11,7 +11,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
     
-    # Menggunakan Container SDK Resmi dari Espressif
     container:
       image: espressif/idf:v5.3
 
@@ -27,7 +26,6 @@ jobs:
 
       - name: Compile Firmware ESP32
         run: |
-          # Aktifkan environment path ESP-IDF bawaan container
           . /opt/esp/idf/export.sh
           
           cd official_bluepad32/examples/esp32
@@ -36,7 +34,6 @@ jobs:
 
       - name: Merge Binary Menjadi 1 File (.bin)
         run: |
-          # Aktifkan environment path ESP-IDF agar esptool bawaan aktif
           . /opt/esp/idf/export.sh
           
           cd official_bluepad32/examples/esp32/build
@@ -49,7 +46,7 @@ jobs:
             --flash_size 4MB \
             0x1000 bootloader/bootloader.bin \
             0x8000 partition_table/partition-table.bin \
-            0x10000 bluepad32-esp32.bin
+            0x10000 bluepad32_esp32_example_app.bin
 
           mkdir -p $GITHUB_WORKSPACE/output_bin
           cp merged-bluepad32-esp32.bin $GITHUB_WORKSPACE/output_bin/
