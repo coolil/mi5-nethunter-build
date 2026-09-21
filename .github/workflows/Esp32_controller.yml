@@ -1,4 +1,4 @@
-name: Build Bluepad32 Factory Binary
+name: Build Single Factory Binary Bluepad32 for ESP32
 
 on:
   push:
@@ -10,6 +10,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    container:
+      image: espressif/idf:v5.3 # Menjalankan seluruh proses di dalam container SDK ESP-IDF resmi
 
     steps:
       - name: Checkout Repository Utama
@@ -19,36 +21,28 @@ jobs:
         run: |
           git clone --recursive https://github.com/ricardoquesada/bluepad32.git official_bluepad32
 
-      - name: Integrasi BTStack (Set Dummy IDF_PATH)
+      - name: Integrasi BTStack ke Bluepad32
         run: |
-          cd official_bluepad32
-          INTEGRATE_SCRIPT=$(find . -name "integrate_btstack.py" -print -quit)
-          if [ -n "$INTEGRATE_SCRIPT" ]; then
-            cd $(dirname "$INTEGRATE_SCRIPT")
-            # Menetapkan IDF_PATH sementara agar script integrasi berhasil berjalan
-            IDF_PATH=. python3 integrate_btstack.py
-          fi
+          cd official_bluepad32/external/btstack/port/esp32
+          # Parameter IDF_PATH resmi sesuai dokumentasi Bluepad32
+          IDF_PATH=../../../../src ./integrate_btstack.py
 
-      - name: Install esptool
+      - name: Compile Firmware Bluepad32
         run: |
-          python3 -m pip install --upgrade pip
-          pip install esptool
+          cd official_bluepad32/examples/esp32
+          idf.py set-target esp32
+          idf.py build
 
-      - name: Compile Firmware via ESP-IDF CI Action
-        uses: espressif/esp-idf-ci-action@v1
-        with:
-          esp_idf_version: 'v5.3'
-          target: 'esp32'
-          path: 'official_bluepad32/examples/esp32'
-
-      - name: Merge File Binary Menjadi Single Factory Firmware
+      - name: Install esptool & Merge Binary Menjadi 1 File (.bin)
         run: |
-          BUILD_DIR="official_bluepad32/examples/esp32/build"
-          cd "$BUILD_DIR"
+          python -m pip install esptool
           
-          # Mencari nama file binary aplikasi utama
+          cd official_bluepad32/examples/esp32/build
+          
+          # Mencari file binary aplikasi utama hasil compile
           APP_BIN=$(ls *.bin | grep -v "bootloader" | grep -v "partition" | head -n 1)
           
+          # Menggabungkan Bootloader, Partition Table, dan Application menjadi 1 file tunggal
           esptool.py --chip esp32 merge_bin \
             -o merged-bluepad32-esp32.bin \
             --flash_mode dio \
@@ -61,7 +55,7 @@ jobs:
           mkdir -p $GITHUB_WORKSPACE/output_bin
           cp merged-bluepad32-esp32.bin $GITHUB_WORKSPACE/output_bin/
 
-      - name: Upload Single BIN File sebagai Artifact
+      - name: Upload Single BIN File sebagai GitHub Artifact
         uses: actions/upload-artifact@v4
         with:
           name: bluepad32-esp32-single-factory-bin
