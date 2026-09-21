@@ -5,22 +5,32 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
-  workflow_dispatch: # Memungkinkan trigger manual dari tab Actions
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository (Recursive)
+      - name: Checkout Repository (Recursive Submodules)
         uses: actions/checkout@v4
         with:
           submodules: 'recursive'
+          fetch-depth: 0
 
       - name: Integrasi BTStack ke Bluepad32
         run: |
-          cd external/btstack/port/esp32
-          python3 integrate_btstack.py
+          # Mencari dan menjalankan integrate_btstack.py di manapun lokasinya berada
+          INTEGRATE_SCRIPT=$(find . -name "integrate_btstack.py" -print -quit)
+          
+          if [ -n "$INTEGRATE_SCRIPT" ]; then
+            echo "Menjalankan integrasi BTStack dari: $INTEGRATE_SCRIPT"
+            SCRIPT_DIR=$(dirname "$INTEGRATE_SCRIPT")
+            cd "$SCRIPT_DIR"
+            python3 integrate_btstack.py
+          else
+            echo "Script integrate_btstack.py tidak ditemukan, melompati langkah ini..."
+          fi
 
       - name: Install esptool untuk Gabung File BIN
         run: |
