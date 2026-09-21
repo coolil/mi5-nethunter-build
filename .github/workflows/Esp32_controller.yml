@@ -1,43 +1,46 @@
-name: Build Bluepad32 via PlatformIO
+name: Build Single Factory Binary Bluepad32 for ESP32
 
 on:
   push:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
-  workflow_dispatch: # Bisa dijalankan manual via tombol di tab Actions
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    
+    # Menggunakan Container SDK Resmi dari Espressif (ESP-IDF v5.3)
+    container:
+      image: espressif/idf:v5.3
 
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Clone Official Bluepad32 Repository
+      - name: Clone Official Bluepad32 Repository (Recursive)
         run: |
           git clone --recursive https://github.com/ricardoquesada/bluepad32.git official_bluepad32
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install PlatformIO & esptool
+      - name: Integrasi BTStack ke Source Code Bluepad32
         run: |
-          python -m pip install --upgrade pip
-          pip install platformio esptool
+          cd official_bluepad32/external/btstack/port/esp32
+          # Menjalankan perintah integrasi persis sesuai instruksi resmi Bluepad32
+          IDF_PATH=../../../../src ./integrate_btstack.py
 
-      - name: Compile Firmware dengan PlatformIO
+      - name: Compile Firmware ESP32
         run: |
-          cd official_bluepad32/src/platforms/esp32
-          # PlatformIO akan mengunduh semua toolchain dan mengompilasi proyek secara otomatis
-          pio run -e esp32
+          # Mengaktifkan environment path ESP-IDF bawaan Docker container
+          . /opt/esp/idf/export.sh
+          
+          cd official_bluepad32/examples/esp32
+          idf.py set-target esp32
+          idf.py build
 
-      - name: Merge Binary Menjadi 1 File Tunggal (.bin)
+      - name: Install esptool & Merge Binary Menjadi 1 File (.bin)
         run: |
-          cd official_bluepad32/src/platforms/esp32/.pio/build/esp32
+          # Install esptool ke dalam Python environment container
+          python -m pip install esptool
+          
+          cd official_bluepad32/examples/esp32/build
           
           # Menggabungkan Bootloader (0x1000), Partition Table (0x8000), dan Application (0x10000)
           esptool.py --chip esp32 merge_bin \
@@ -45,9 +48,9 @@ jobs:
             --flash_mode dio \
             --flash_freq 40m \
             --flash_size 4MB \
-            0x1000 bootloader.bin \
-            0x8000 partitions.bin \
-            0x10000 firmware.bin
+            0x1000 bootloader/bootloader.bin \
+            0x8000 partition_table/partition-table.bin \
+            0x10000 bluepad32-esp32.bin
 
           mkdir -p $GITHUB_WORKSPACE/output_bin
           cp merged-bluepad32-esp32.bin $GITHUB_WORKSPACE/output_bin/
