@@ -34,9 +34,10 @@ jobs:
           idf.py set-target esp32
           idf.py build
 
-      - name: Install esptool & Merge Binary Menjadi 1 File (.bin)
+      - name: Merge Binary Menjadi 1 File (.bin)
         run: |
-          python -m pip install esptool
+          # Aktifkan environment path ESP-IDF agar esptool bawaan aktif
+          . /opt/esp/idf/export.sh
           
           cd official_bluepad32/examples/esp32/build
           
