@@ -11,7 +11,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     
-    # Menggunakan Container SDK Resmi dari Espressif (ESP-IDF v5.3)
+    # Menggunakan Container SDK Resmi dari Espressif
     container:
       image: espressif/idf:v5.3
 
@@ -23,12 +23,11 @@ jobs:
       - name: Integrasi BTStack ke Source Code Bluepad32
         run: |
           cd official_bluepad32/external/btstack/port/esp32
-          # Menjalankan perintah integrasi persis sesuai instruksi resmi Bluepad32
           IDF_PATH=../../../../src ./integrate_btstack.py
 
       - name: Compile Firmware ESP32
         run: |
-          # Mengaktifkan environment path ESP-IDF bawaan Docker container
+          # Aktifkan environment path ESP-IDF bawaan container
           . /opt/esp/idf/export.sh
           
           cd official_bluepad32/examples/esp32
@@ -37,7 +36,6 @@ jobs:
 
       - name: Install esptool & Merge Binary Menjadi 1 File (.bin)
         run: |
-          # Install esptool ke dalam Python environment container
           python -m pip install esptool
           
           cd official_bluepad32/examples/esp32/build
